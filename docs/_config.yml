@@ -1,4 +1,12 @@
 title: InferQoS
 description: QoS control plane for finite AI inference capacity
 theme: minima
-
+url: https://dlamaro96.github.io
+baseurl: /inferqos
+repository: dlamaro96/inferqos
+header_pages:
+  - architecture/overview.md
+  - concepts/scheduling.md
+  - providers.md
+  - deployment/index.md
+  - operations/runbook.md

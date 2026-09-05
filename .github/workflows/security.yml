@@ -9,9 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: github/codeql-action/init@0b1f0509b2ddb4dc7bd94367abfe7ad1d8a1b810 # v3.30.5
+      - uses: github/codeql-action/init@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
         with: { languages: actions }
-      - uses: github/codeql-action/analyze@0b1f0509b2ddb4dc7bd94367abfe7ad1d8a1b810 # v3.30.5
+      - uses: github/codeql-action/analyze@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
   rust-policy:
     runs-on: ubuntu-latest
     steps:
@@ -20,4 +20,3 @@ jobs:
       - run: cargo audit
       - run: cargo deny check
       - run: git grep -nEI '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16})' -- ':!Cargo.lock' && exit 1 || true
-

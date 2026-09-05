@@ -1,5 +1,12 @@
 # InferQoS
 
+[![CI](https://github.com/dlamaro96/inferqos/actions/workflows/ci.yml/badge.svg)](https://github.com/dlamaro96/inferqos/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dlamaro96/inferqos)](https://github.com/dlamaro96/inferqos/releases)
+[![License](https://img.shields.io/github/license/dlamaro96/inferqos)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/dlamaro96/inferqos/badge)](https://securityscorecards.dev/viewer/?uri=github.com/dlamaro96/inferqos)
+[![Container](https://img.shields.io/badge/ghcr.io-inferqos-blue)](https://github.com/dlamaro96/inferqos/pkgs/container/inferqos)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://dlamaro96.github.io/inferqos/)
+
 **The open-source QoS control plane for finite and contracted AI inference capacity.**
 
 You bought finite AI inference capacity. Bursts cause throttling or force overprovisioning.
@@ -107,4 +114,3 @@ provider already offering equivalent business-aware QoS.
 Apache-2.0 licensed. Contributions use DCO sign-off. Read [CONTRIBUTING.md](CONTRIBUTING.md),
 [GOVERNANCE.md](GOVERNANCE.md), and the [roadmap](ROADMAP.md). Security reports should use GitHub
 private vulnerability reporting, not a public issue.
-
