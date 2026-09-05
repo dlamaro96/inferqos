@@ -1,0 +1,13 @@
+**/target
+.git
+.github
+.env
+node_modules
+coverage
+reports
+fuzz/corpus
+fuzz/artifacts
+deploy/azure/container-apps/terraform/.terraform
+*.pem
+*.key
+*.p12

@@ -1,0 +1,22 @@
+[package]
+name = "inferqos-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+inferqos-config = { path = "../crates/config" }
+serde_yaml = "0.9"
+
+[workspace]
+
+[[bin]]
+name = "config-yaml"
+path = "fuzz_targets/config-yaml.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,37 @@
+apiVersion: inferqos.io/v1alpha1
+kind: InferQoSConfig
+mode: enforce
+server:
+  listen: 127.0.0.1:8280
+  max_body_bytes: 1048576
+  spool_threshold_bytes: 8
+  spool_directory: ${INFERQOS_TEST_SPOOL}
+  config_reload_interval: 250ms
+admin: { listen: "127.0.0.1:9290", expose_decisions: true }
+coordinator: { type: memory }
+service_classes:
+  realtime: { weight: 100, default_deadline: 500ms, max_queue: 100ms, max_queued: 100 }
+  interactive: { weight: 50, default_deadline: 3s, max_queue: 3s, max_queued: 1000 }
+  standard: { weight: 20, default_deadline: 10s, max_queue: 10s, max_queued: 3000 }
+  workflow: { weight: 10, default_deadline: 30s, max_queue: 60s, max_queued: 3000 }
+  batch: { weight: 1, default_deadline: 30m, max_queue: 30m, max_queued: 3000 }
+pools:
+  primary:
+    provider: fake
+    endpoint: ${INFERQOS_UPSTREAM}
+    model: fake
+    deployment: null
+    region: null
+    capacity_units: 4096
+    auth: { type: none }
+    allowed_hosts: []
+    initial_safety_factor: 1.0
+policies:
+  tenants:
+    interactive-team: { weight: 10, guaranteed_share: 0.5, max_share: 1.0, max_concurrency: 2 }
+  applications:
+    reload-app: { tenant: interactive-team, allowed_classes: [interactive, standard], weight: 10, max_concurrency: 2, permitted_pools: [primary] }
+  api_keys:
+    INFERQOS_RELOAD_TEST_KEY: { principal: reload-test, tenant: interactive-team, application: reload-app }
+identity: {}
+limits: { total_queue_depth: 100, total_queue_bytes: 1048576, decision_history: 32, expected_replicas: 1, allow_unsafe_uncoordinated_ha: false }

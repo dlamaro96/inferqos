@@ -16,9 +16,19 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/inferqos
+UMask=0027
 CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]
 WantedBy=multi-user.target
-

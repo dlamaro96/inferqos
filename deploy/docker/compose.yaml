@@ -13,6 +13,8 @@ services:
     command: ["serve", "--config", "/etc/inferqos/demo.yaml"]
     environment:
       INFERQOS_UPSTREAM: http://fake-provider:18080/
+      INFERQOS_DEMO_INTERACTIVE_KEY: local-demo-interactive
+      INFERQOS_DEMO_BACKGROUND_KEY: local-demo-background
     volumes:
       - ../../examples/minimal/demo.yaml:/etc/inferqos/demo.yaml:ro
     ports: ["8080:8080", "9090:9090"]
@@ -20,4 +22,3 @@ services:
     read_only: true
     tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
     security_opt: ["no-new-privileges:true"]
-
