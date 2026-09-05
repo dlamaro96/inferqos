@@ -1,0 +1,8 @@
+title: "[Idea] "
+labels: ["kind/feature"]
+body:
+  - type: textarea
+    id: idea
+    attributes: { label: Idea, description: Describe the finite-capacity QoS problem and proposed direction. }
+    validations: { required: true }
+

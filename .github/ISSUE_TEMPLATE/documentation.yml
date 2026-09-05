@@ -1,0 +1,12 @@
+name: Documentation
+description: Report inaccurate or missing documentation
+body:
+  - type: input
+    id: location
+    attributes: { label: Page or section }
+    validations: { required: true }
+  - type: textarea
+    id: problem
+    attributes: { label: Problem and suggested correction }
+    validations: { required: true }
+

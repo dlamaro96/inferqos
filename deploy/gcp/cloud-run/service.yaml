@@ -1,0 +1,23 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: inferqos
+  annotations: { run.googleapis.com/ingress: internal }
+spec:
+  template:
+    metadata:
+      annotations: { autoscaling.knative.dev/minScale: '2', autoscaling.knative.dev/maxScale: '10', run.googleapis.com/execution-environment: gen2 }
+    spec:
+      containerConcurrency: 50
+      timeoutSeconds: 3600
+      serviceAccountName: inferqos@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+        - image: ghcr.io/dlamaro96/inferqos:0.1.0
+          args: [serve, --config, /etc/inferqos/inferqos.yaml]
+          ports: [{ containerPort: 8080 }]
+          resources: { limits: { cpu: '1', memory: 512Mi } }
+          startupProbe: { httpGet: { path: /health/live, port: 9090 }, periodSeconds: 2, failureThreshold: 15 }
+          livenessProbe: { httpGet: { path: /health/live, port: 9090 }, periodSeconds: 10 }
+          volumeMounts: [{ name: config, mountPath: /etc/inferqos }]
+      volumes: [{ name: config, secret: { secretName: inferqos-config, items: [{ version: latest, path: inferqos.yaml }] } }]
+

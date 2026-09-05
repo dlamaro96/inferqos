@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose a scoped product improvement
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Capacity/QoS problem }
+    validations: { required: true }
+  - type: textarea
+    id: mission
+    attributes: { label: Core mission fit, description: Why is this QoS/admission/capacity intelligence rather than gateway scope? }
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes: { label: Alternatives considered }
+

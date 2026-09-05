@@ -1,0 +1,23 @@
+services:
+  fake-provider:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.fake
+    command: ["--listen", "0.0.0.0:18080", "--concurrency", "4", "--latency-ms", "60"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+  inferqos:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["serve", "--config", "/etc/inferqos/demo.yaml"]
+    environment:
+      INFERQOS_UPSTREAM: http://fake-provider:18080/
+    volumes:
+      - ../../examples/minimal/demo.yaml:/etc/inferqos/demo.yaml:ro
+    ports: ["8080:8080", "9090:9090"]
+    depends_on: [fake-provider]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    security_opt: ["no-new-privileges:true"]
+

@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "inferqos-client"
+version = "0.1.0"
+description = "Optional InferQoS QoS header helpers"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+

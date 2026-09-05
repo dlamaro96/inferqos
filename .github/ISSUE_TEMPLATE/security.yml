@@ -1,0 +1,9 @@
+name: Security report
+description: Do not disclose vulnerabilities publicly
+body:
+  - type: markdown
+    attributes: { value: "Stop: use the repository Security tab → Report a vulnerability. See SECURITY.md." }
+  - type: checkboxes
+    id: private
+    attributes: { label: Private reporting, options: [{ label: I will use private vulnerability reporting., required: true }] }
+

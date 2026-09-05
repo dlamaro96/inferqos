@@ -1,0 +1,24 @@
+[Unit]
+Description=InferQoS finite inference capacity controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=inferqos
+Group=inferqos
+ExecStart=/usr/local/bin/inferqos serve --config /etc/inferqos/inferqos.yaml
+EnvironmentFile=-/etc/inferqos/inferqos.env
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=35
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/inferqos
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+

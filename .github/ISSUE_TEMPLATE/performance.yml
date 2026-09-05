@@ -1,0 +1,12 @@
+name: Performance regression
+description: Report measured scheduler or proxy regression
+body:
+  - type: textarea
+    id: method
+    attributes: { label: Hardware and exact methodology }
+    validations: { required: true }
+  - type: textarea
+    id: result
+    attributes: { label: Baseline and regression }
+    validations: { required: true }
+

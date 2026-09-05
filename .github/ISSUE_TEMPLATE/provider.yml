@@ -1,0 +1,15 @@
+name: Provider request
+description: Request or improve a finite-capacity adapter
+body:
+  - type: input
+    id: provider
+    attributes: { label: Provider and capacity product }
+    validations: { required: true }
+  - type: textarea
+    id: signals
+    attributes: { label: Capacity, usage, throttle, retry, streaming, and auth contracts }
+    validations: { required: true }
+  - type: textarea
+    id: docs
+    attributes: { label: Official documentation links }
+
