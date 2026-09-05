@@ -3,7 +3,7 @@ Description: Private-by-default InferQoS ECS/Fargate service
 Parameters:
   Image:
     Type: String
-    Default: "ghcr.io/dlamaro96/inferqos:0.1.0"
+    Default: "ghcr.io/dlamaro96/inferqos:v0.2.0"
   VpcId:
     Type: "AWS::EC2::VPC::Id"
   Subnets:
