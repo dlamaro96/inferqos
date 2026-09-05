@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-inferqos-core = { path = "../core" }
+inferqos-core.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 thiserror.workspace = true
@@ -18,4 +18,3 @@ proptest.workspace = true
 [[bench]]
 name = "decision"
 harness = false
-

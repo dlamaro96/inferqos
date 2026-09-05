@@ -14,15 +14,14 @@ path = "src/main.rs"
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
-inferqos-config = { path = "../config" }
-inferqos-core = { path = "../core" }
-inferqos-proxy = { path = "../proxy" }
-inferqos-scheduler = { path = "../scheduler" }
-inferqos-simulator = { path = "../simulator" }
+inferqos-config.workspace = true
+inferqos-core.workspace = true
+inferqos-proxy.workspace = true
+inferqos-scheduler.workspace = true
+inferqos-simulator.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
-
