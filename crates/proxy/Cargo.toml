@@ -9,12 +9,12 @@ axum.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
 http.workspace = true
-inferqos-capacity = { path = "../capacity" }
-inferqos-config = { path = "../config" }
-inferqos-coordinator = { path = "../coordinator" }
-inferqos-core = { path = "../core" }
-inferqos-providers = { path = "../providers" }
-inferqos-scheduler = { path = "../scheduler" }
+inferqos-capacity.workspace = true
+inferqos-config.workspace = true
+inferqos-coordinator.workspace = true
+inferqos-core.workspace = true
+inferqos-providers.workspace = true
+inferqos-scheduler.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -25,6 +25,14 @@ homepage = "https://dlamaro96.github.io/inferqos"
 authors = ["InferQoS contributors"]
 
 [workspace.dependencies]
+inferqos-capacity = { path = "crates/capacity", version = "0.1.0" }
+inferqos-config = { path = "crates/config", version = "0.1.0" }
+inferqos-coordinator = { path = "crates/coordinator", version = "0.1.0" }
+inferqos-core = { path = "crates/core", version = "0.1.0" }
+inferqos-providers = { path = "crates/providers", version = "0.1.0" }
+inferqos-proxy = { path = "crates/proxy", version = "0.1.0" }
+inferqos-scheduler = { path = "crates/scheduler", version = "0.1.0" }
+inferqos-simulator = { path = "crates/simulator", version = "0.1.0" }
 anyhow = "1.0"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["http2", "macros"] }
