@@ -1965,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1993,7 +1993,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-capacity"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "inferqos-core",
  "parking_lot",
@@ -2003,7 +2003,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-config"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "humantime-serde",
@@ -2019,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-coordinator"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -2031,7 +2031,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-durable-queue"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -2065,7 +2065,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-fake-provider"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "bytes",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-identity"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "http 1.5.0",
  "inferqos-config",
@@ -2097,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-provider-protocol"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2119,14 +2119,14 @@ dependencies = [
 
 [[package]]
 name = "inferqos-provider-sdk"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "inferqos-core",
 ]
 
 [[package]]
 name = "inferqos-providers"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -2149,7 +2149,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-proxy"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "bytes",
@@ -2177,7 +2177,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-scheduler"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "inferqos-core",
  "parking_lot",
@@ -2189,7 +2189,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-simulator"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2200,7 +2200,7 @@ dependencies = [
 
 [[package]]
 name = "inferqos-telemetry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",

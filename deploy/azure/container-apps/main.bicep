@@ -9,7 +9,7 @@ param location string = resourceGroup().location
 ])
 param profile string = 'high-availability'
 
-param image string = 'ghcr.io/dlamaro96/inferqos:v0.2.0'
+param image string = 'ghcr.io/dlamaro96/inferqos:v0.2.1'
 
 @secure()
 param configYaml string

@@ -1,5 +1,7 @@
 services:
   fake-provider:
+    image: ghcr.io/dlamaro96/inferqos:fake-v0.2.1
+    pull_policy: missing
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.fake
@@ -7,6 +9,8 @@ services:
     read_only: true
     security_opt: ["no-new-privileges:true"]
   inferqos:
+    image: ghcr.io/dlamaro96/inferqos:v0.2.1
+    pull_policy: missing
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 - 2026-09-05
+
+- Rebuilt the repository front door around a zero-install traffic lab, a release-image quickstart,
+  authentic product screenshots, and a visual request-path and trust-boundary architecture.
+- Added deployment prerequisites, transparent cost examples, an operator configuration reference,
+  a measurable roadmap, and an ADR defining when the SDKs should move to separate repositories.
+- Fixed the embedded dashboard's hidden error-banner state and disabled stale stylesheet caching
+  across upgrades.
+- Made the default Docker demo pull signed multi-architecture images while preserving an explicit
+  local-source build path for contributors.
+
 ## 0.2.0 - 2026-09-05
 
 - Rebuilt the embedded management dashboard around live capacity pressure, calibration confidence,
