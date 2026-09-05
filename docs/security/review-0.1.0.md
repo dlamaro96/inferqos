@@ -52,3 +52,15 @@ below and must be verified at the operator’s edge.
 - TLS termination, cloud firewall rules, Valkey ACL/TLS, OIDC/mTLS policy, and egress restrictions are
   environment controls and must be verified in the deployed topology.
 
+## Completion hardening
+
+- OIDC accepts only explicitly configured issuers and audiences, bounds discovery/JWKS responses,
+  disables redirects, permits only RS/ES JWT algorithms, and refreshes an unknown signing key once.
+- Direct mTLS uses a configured client CA; trusted-proxy identity headers are accepted only from
+  configured CIDRs, and certificate SAN/fingerprint mappings remain policy controlled.
+- Queued bodies use an owner-only spool directory, exclusive file creation, bounded bytes, and
+  delete-on-drop handles. Payload logging and persistence remain disabled by default.
+- The external provider protocol is local-socket/loopback-first, bounds messages, and supports TLS
+  with mutual authentication for remote use.
+- The final dependency graph passes `cargo audit` and `cargo deny check`; JWT verification uses the
+  AWS-LC-backed implementation rather than the advisory-affected RSA implementation.

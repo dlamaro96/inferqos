@@ -10,8 +10,7 @@ Prompt logging = off. Completion logging = off. Phone-home = off.
 ```
 
 The data plane observes headers, endpoint path, body size, estimated/actual token metadata, timing,
-status, and throttle signals. Request content is forwarded but not logged or retained. Queued bodies
-may occupy bounded memory; production configurations should use short interactive queues and strict
-body limits. Decision history stores identity labels, class, pool, work estimate, outcome, and wait
-time only and may be disabled with `decision_history: 0`.
-
+status, and throttle signals. Request content is forwarded but not logged. Small queued bodies may
+occupy bounded memory; larger bounded bodies may use secure auto-deleted local spool files according
+to configuration. Decision history stores identity labels, class, pool, work estimate, outcome, and
+wait time only and may be disabled with `decision_history: 0`.
