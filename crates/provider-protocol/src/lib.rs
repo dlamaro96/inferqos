@@ -3,15 +3,18 @@
 
 use async_trait::async_trait;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
+#[cfg(unix)]
 use hyper_util::rt::TokioIo;
 use inferqos_core::{
     CoreError, EstimateSource, ProviderAdapter, ProviderResponse, ProxyRequest, UpstreamHealth,
     WorkEstimate, WorkUnits,
 };
 use std::{collections::HashMap, path::PathBuf, time::Duration};
+#[cfg(unix)]
 use tokio::net::UnixStream;
 use tokio::sync::{mpsc, watch};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
+#[cfg(unix)]
 use tower::service_fn;
 
 pub mod v1 {
@@ -42,14 +45,7 @@ pub struct ExternalProviderClient {
 impl ExternalProviderClient {
     pub async fn connect(endpoint: AdapterEndpoint) -> Result<Self, CoreError> {
         let channel = match endpoint {
-            AdapterEndpoint::Unix { path } => Endpoint::try_from("http://[::]:50051")
-                .map_err(protocol)?
-                .connect_with_connector(service_fn(move |_| {
-                    let path = path.clone();
-                    async move { UnixStream::connect(path).await.map(TokioIo::new) }
-                }))
-                .await
-                .map_err(protocol)?,
+            AdapterEndpoint::Unix { path } => connect_unix(path).await?,
             AdapterEndpoint::Loopback { uri } => {
                 let parsed: Uri = uri.parse().map_err(protocol)?;
                 let host = parsed
@@ -104,6 +100,26 @@ impl ExternalProviderClient {
                 .max_encoding_message_size(16 * 1024 * 1024),
         })
     }
+}
+
+#[cfg(unix)]
+async fn connect_unix(path: PathBuf) -> Result<Channel, CoreError> {
+    Endpoint::try_from("http://[::]:50051")
+        .map_err(protocol)?
+        .connect_with_connector(service_fn(move |_| {
+            let path = path.clone();
+            async move { UnixStream::connect(path).await.map(TokioIo::new) }
+        }))
+        .await
+        .map_err(protocol)
+}
+
+#[cfg(not(unix))]
+async fn connect_unix(_path: PathBuf) -> Result<Channel, CoreError> {
+    Err(CoreError::Provider(
+        "Unix-socket external adapters are not supported on this platform; use loopback or TLS"
+            .into(),
+    ))
 }
 
 #[async_trait]
