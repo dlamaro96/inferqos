@@ -995,6 +995,7 @@ dependencies = [
  "http",
  "inferqos-capacity",
  "inferqos-config",
+ "inferqos-coordinator",
  "inferqos-core",
  "inferqos-providers",
  "inferqos-scheduler",

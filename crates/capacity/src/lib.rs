@@ -55,6 +55,15 @@ impl CapacityModel {
         s.reservations.insert(id, charged);
         Some(id)
     }
+    pub fn charged_units(&self, predicted: WorkUnits) -> f64 {
+        predicted.0 * self.state.lock().safety
+    }
+    pub fn track_distributed(&self, id: Uuid, charged_units: f64) {
+        let mut state = self.state.lock();
+        if state.reservations.insert(id, charged_units).is_none() {
+            state.reserved += charged_units;
+        }
+    }
     pub fn release(
         &self,
         id: Uuid,

@@ -169,7 +169,7 @@ async fn serve(path: PathBuf, mode: Option<Mode>) -> Result<()> {
     }
     let data = config.server.listen;
     let admin = config.admin.listen;
-    let app = AppState::build(config.clone())?;
+    let app = AppState::build(config.clone()).await?;
     let data_listener = tokio::net::TcpListener::bind(data)
         .await
         .with_context(|| format!("cannot bind proxy at {data}"))?;

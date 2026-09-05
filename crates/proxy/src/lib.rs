@@ -5,12 +5,14 @@ use axum::{
     body::Body,
     extract::{Request, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get},
 };
 use futures_util::stream;
 use inferqos_capacity::CapacityModel;
 use inferqos_config::{ApplicationPolicy, Config, Mode};
+use inferqos_coordinator::{Coordinator, InMemoryCoordinator, Lease, ValkeyCoordinator};
 use inferqos_core::{
     AdmissionRequest, CoreError, HEADER_CLASS, HEADER_DEADLINE_MS, HEADER_QUEUEABLE,
     HEADER_REQUEST_ID, IdentityContext, ProviderAdapter, ProxyRequest, ServiceClass,
@@ -36,9 +38,10 @@ pub struct AppState(Arc<Inner>);
 struct PoolRuntime {
     provider: Arc<dyn ProviderAdapter>,
     capacity: Arc<CapacityModel>,
+    limit: f64,
 }
 struct Pending {
-    sender: oneshot::Sender<Uuid>,
+    sender: oneshot::Sender<Lease>,
     request: AdmissionRequest,
     body_bytes: usize,
     class_weight: u32,
@@ -54,6 +57,8 @@ struct Inner {
     decisions: Mutex<VecDeque<DecisionRecord>>,
     draining: AtomicBool,
     metrics: Metrics,
+    coordinator: Arc<dyn Coordinator>,
+    lease_ttl: Duration,
 }
 #[derive(Default)]
 struct Metrics {
@@ -78,7 +83,28 @@ pub struct DecisionRecord {
 }
 
 impl AppState {
-    pub fn build(config: Config) -> Result<Self, CoreError> {
+    pub async fn build(config: Config) -> Result<Self, CoreError> {
+        let (coordinator, lease_ttl): (Arc<dyn Coordinator>, Duration) = match &config.coordinator {
+            inferqos_config::CoordinatorConfig::Memory => (
+                Arc::new(InMemoryCoordinator::default()),
+                Duration::from_secs(300),
+            ),
+            inferqos_config::CoordinatorConfig::Valkey { url_env, lease_ttl } => {
+                let url = std::env::var(url_env).map_err(|_| {
+                    CoreError::Provider(format!(
+                        "coordinator environment variable {url_env} is not set"
+                    ))
+                })?;
+                let value = ValkeyCoordinator::connect(&url, "inferqos:v1")
+                    .await
+                    .map_err(|error| CoreError::Provider(error.to_string()))?;
+                value
+                    .healthy()
+                    .await
+                    .map_err(|error| CoreError::Provider(error.to_string()))?;
+                (Arc::new(value), *lease_ttl)
+            }
+        };
         let mut pools = HashMap::new();
         for (name, pool) in &config.pools {
             let provider = Arc::new(HttpProvider::from_config(pool)?) as Arc<dyn ProviderAdapter>;
@@ -86,7 +112,14 @@ impl AppState {
                 pool.capacity_units,
                 pool.initial_safety_factor,
             ));
-            pools.insert(name.clone(), PoolRuntime { provider, capacity });
+            pools.insert(
+                name.clone(),
+                PoolRuntime {
+                    provider,
+                    capacity,
+                    limit: pool.capacity_units,
+                },
+            );
         }
         let scheduler = Arc::new(Scheduler::new(
             Arc::new(SystemClock::default()),
@@ -104,6 +137,8 @@ impl AppState {
             decisions: Mutex::new(VecDeque::new()),
             draining: AtomicBool::new(false),
             metrics: Metrics::default(),
+            coordinator,
+            lease_ttl,
         }));
         state.start_dispatcher();
         Ok(state)
@@ -126,8 +161,15 @@ impl AppState {
                 let Some(pool) = state.0.pools.get(&req.pool) else {
                     continue;
                 };
-                if let Some(reservation) = pool.capacity.reserve(req.estimate.normalized_units) {
-                    let _ = pending.sender.send(reservation);
+                let charged = pool.capacity.charged_units(req.estimate.normalized_units);
+                let reservation = state
+                    .0
+                    .coordinator
+                    .reserve(&req.pool, pool.limit, charged, state.0.lease_ttl)
+                    .await;
+                if let Ok(Some(lease)) = reservation {
+                    pool.capacity.track_distributed(lease.id, charged);
+                    let _ = pending.sender.send(lease);
                 } else {
                     let elapsed = pending.queued_at.elapsed();
                     if elapsed >= pending.request.deadline {
@@ -161,6 +203,9 @@ impl AppState {
             .route("/api/v1/queues", get(queues))
             .route("/api/v1/decisions", get(decisions))
             .route("/ui", get(dashboard))
+            .route("/ui/app.js", get(dashboard_js))
+            .route("/ui/style.css", get(dashboard_css))
+            .layer(middleware::from_fn_with_state(self.clone(), admin_security))
             .with_state(self.clone())
     }
     pub fn begin_drain(&self) {
@@ -274,7 +319,26 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
         deadline,
         queueable,
     };
-    let immediate = pool.capacity.reserve(estimate.normalized_units);
+    let charged = pool.capacity.charged_units(estimate.normalized_units);
+    let immediate = match state
+        .0
+        .coordinator
+        .reserve(&pool_name, pool.limit, charged, state.0.lease_ttl)
+        .await
+    {
+        Ok(lease) => lease,
+        Err(error) => {
+            return problem(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "coordinator_unavailable",
+                &format!("capacity coordinator failed closed: {error}"),
+                Some(1),
+            );
+        }
+    };
+    if let Some(lease) = &immediate {
+        pool.capacity.track_distributed(lease.id, charged);
+    }
     let (mut reservation, mut outcome, mut queue_age) = (immediate, "admitted", 0u64);
     if reservation.is_none() {
         if config.mode == Mode::Shadow {
@@ -360,9 +424,12 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
     let response = match result {
         Ok(r) => r,
         Err(e) => {
-            if let Some(id) = reservation {
+            if let Some(lease) = reservation {
+                if let Err(error) = state.0.coordinator.release(&lease).await {
+                    tracing::error!(%error, lease_id=%lease.id, "failed to release capacity lease; expiry will recover it");
+                }
                 pool.capacity
-                    .release(id, estimate.normalized_units, None, false);
+                    .release(lease.id, estimate.normalized_units, None, false);
             }
             state.0.metrics.active.fetch_sub(1, Ordering::Relaxed);
             return problem(
@@ -387,13 +454,28 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
     let (capacity_model, metrics) = (pool.capacity.clone(), state.clone());
     let (output_tx, output_rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, CoreError>>(16);
     tokio::spawn(async move {
-        while let Some(chunk) = upstream_rx.recv().await {
-            if output_tx.send(chunk).await.is_err() {
-                break;
+        let mut renew =
+            tokio::time::interval((metrics.0.lease_ttl / 3).max(Duration::from_secs(1)));
+        loop {
+            tokio::select! {
+                chunk = upstream_rx.recv() => match chunk {
+                    Some(chunk) => if output_tx.send(chunk).await.is_err() { break; },
+                    None => break,
+                },
+                _ = renew.tick(), if reservation.is_some() => {
+                    if let Some(lease) = &reservation
+                        && let Err(error) = metrics.0.coordinator.renew(lease, metrics.0.lease_ttl).await
+                    {
+                        tracing::error!(%error, lease_id=%lease.id, "failed to renew active capacity lease");
+                    }
+                }
             }
         }
-        if let Some(id) = reservation {
-            capacity_model.release(id, estimate.normalized_units, None, throttled);
+        if let Some(lease) = reservation {
+            if let Err(error) = metrics.0.coordinator.release(&lease).await {
+                tracing::error!(%error, lease_id=%lease.id, "failed to release capacity lease; expiry will recover it");
+            }
+            capacity_model.release(lease.id, estimate.normalized_units, None, throttled);
         }
         metrics.0.metrics.active.fetch_sub(1, Ordering::Relaxed);
     });
@@ -570,7 +652,77 @@ async fn metrics(State(s): State<AppState>) -> String {
 async fn dashboard() -> Html<&'static str> {
     Html(DASHBOARD)
 }
-const DASHBOARD: &str = r#"<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>InferQoS</title><style>body{font:15px system-ui;background:#0b1020;color:#e5e7eb;margin:0}main{max-width:1040px;margin:56px auto;padding:24px}h1{font-size:42px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.card{background:#151c31;border:1px solid #26304d;border-radius:12px;padding:18px}.v{font-size:28px;color:#7dd3fc}small{color:#94a3b8}</style></head><body><main><h1>InferQoS</h1><p>Finite inference capacity, scheduled fairly. No prompt data is shown or stored.</p><div id=g class=grid></div></main><script>async function r(){let[s,c,q]=await Promise.all(['/api/v1/status','/api/v1/capacity','/api/v1/queues'].map(x=>fetch(x).then(r=>r.json())));let cards=[['Active',s.active],['Queue depth',q.depth],['Pools',Object.keys(c).length],['Capacity reserved',Object.values(c).reduce((a,p)=>a+p.reserved_units,0).toFixed(1)]];g.innerHTML=cards.map(x=>`<div class=card><small>${x[0]}</small><div class=v>${x[1]}</div></div>`).join('')}r();setInterval(r,2000)</script></body></html>"#;
+async fn dashboard_js() -> impl IntoResponse {
+    (
+        [
+            ("content-type", "text/javascript; charset=utf-8"),
+            ("cache-control", "no-store"),
+        ],
+        DASHBOARD_JS,
+    )
+}
+async fn dashboard_css() -> impl IntoResponse {
+    (
+        [
+            ("content-type", "text/css; charset=utf-8"),
+            ("cache-control", "public, max-age=3600"),
+        ],
+        DASHBOARD_CSS,
+    )
+}
+async fn admin_security(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    let health = matches!(path, "/health/live" | "/health/ready");
+    let config = state.0.config.read().await;
+    if !health && let Some(environment) = &config.admin.bearer_token_env {
+        let expected = match std::env::var(environment) {
+            Ok(value) => value,
+            Err(_) => {
+                return problem(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "admin_auth_unavailable",
+                    "configured admin bearer token environment variable is not set",
+                    None,
+                );
+            }
+        };
+        let supplied = request
+            .headers()
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "));
+        if !supplied.is_some_and(|value| expected.as_bytes().ct_eq(value.as_bytes()).into()) {
+            return problem(
+                StatusCode::UNAUTHORIZED,
+                "admin_auth_required",
+                "a valid admin bearer token is required",
+                None,
+            );
+        }
+    }
+    drop(config);
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'",
+        ),
+    );
+    response.headers_mut().insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    response
+        .headers_mut()
+        .insert("x-frame-options", HeaderValue::from_static("DENY"));
+    response
+        .headers_mut()
+        .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    response
+}
+const DASHBOARD: &str = r#"<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>InferQoS</title><link rel=stylesheet href=/ui/style.css></head><body><main><h1>InferQoS</h1><p>Finite inference capacity, scheduled fairly. No prompt data is shown or stored.</p><div id=grid class=grid></div></main><script src=/ui/app.js defer></script></body></html>"#;
+const DASHBOARD_CSS: &str = "body{font:15px system-ui;background:#0b1020;color:#e5e7eb;margin:0}main{max-width:1040px;margin:56px auto;padding:24px}h1{font-size:42px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.card{background:#151c31;border:1px solid #26304d;border-radius:12px;padding:18px}.value{font-size:28px;color:#7dd3fc}small{color:#94a3b8}";
+const DASHBOARD_JS: &str = r#"async function refresh(){const [status,capacity,queue]=await Promise.all(['/api/v1/status','/api/v1/capacity','/api/v1/queues'].map(path=>fetch(path).then(response=>response.json())));const cards=[['Active',status.active],['Queue depth',queue.depth],['Pools',Object.keys(capacity).length],['Capacity reserved',Object.values(capacity).reduce((sum,pool)=>sum+pool.reserved_units,0).toFixed(1)]];const grid=document.getElementById('grid');grid.replaceChildren();for(const [label,value] of cards){const card=document.createElement('div');card.className='card';const caption=document.createElement('small');caption.textContent=label;const amount=document.createElement('div');amount.className='value';amount.textContent=String(value);card.append(caption,amount);grid.append(card)}}refresh();setInterval(refresh,2000);"#;
 
 #[cfg(test)]
 mod tests {
