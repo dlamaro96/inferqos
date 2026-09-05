@@ -50,7 +50,7 @@ The same insertion works with standard clients:
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="unused-in-demo")
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="local-demo-interactive")
 ```
 
 New real-provider configurations default to shadow mode. No application rewrite is needed to
