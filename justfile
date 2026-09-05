@@ -17,6 +17,9 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
 demo:
+    docker compose -f deploy/docker/compose.yaml up
+
+demo-build:
     docker compose -f deploy/docker/compose.yaml up --build
 
 benchmark:

@@ -1249,7 +1249,7 @@ async fn dashboard_css() -> impl IntoResponse {
     (
         [
             ("content-type", "text/css; charset=utf-8"),
-            ("cache-control", "public, max-age=3600"),
+            ("cache-control", "no-store"),
         ],
         DASHBOARD_CSS,
     )
@@ -1324,5 +1324,6 @@ mod tests {
         assert!(DASHBOARD.contains("No prompts or completions"));
         assert!(DASHBOARD_JS.contains("textContent"));
         assert!(!DASHBOARD_JS.contains("innerHTML"));
+        assert!(DASHBOARD_CSS.contains(".error-banner[hidden]"));
     }
 }

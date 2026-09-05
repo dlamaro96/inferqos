@@ -85,6 +85,7 @@ main { width: min(1440px, 100%); margin: 0 auto; padding: 44px 40px 80px; }
 .freshness span { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .freshness time { font: 600 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .error-banner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; margin-bottom: 18px; padding: 13px 16px; border-left: 3px solid var(--danger); background: var(--danger-soft); color: var(--danger); }
+.error-banner[hidden] { display: none; }
 .error-banner button { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
 .metric { min-height: 146px; padding: 22px 24px; border-left: 1px solid var(--line); }
