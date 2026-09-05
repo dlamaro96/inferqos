@@ -1,0 +1,12 @@
+[package]
+name = "inferqos-capacity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+inferqos-core = { path = "../core" }
+parking_lot.workspace = true
+serde.workspace = true
+uuid.workspace = true
+

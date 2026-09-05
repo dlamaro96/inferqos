@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/core",
+  "crates/config",
+  "crates/scheduler",
+  "crates/capacity",
+  "crates/coordinator",
+  "crates/providers",
+  "crates/proxy",
+  "crates/simulator",
+  "crates/cli",
+  "crates/fake-provider",
+  "crates/provider-sdk",
+  "crates/durable-queue",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/dlamaro96/inferqos"
+homepage = "https://dlamaro96.github.io/inferqos"
+authors = ["InferQoS contributors"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["http2", "macros"] }
+bytes = "1.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+dashmap = "6.1"
+futures-util = "0.3"
+http = "1.3"
+http-body-util = "0.1"
+humantime-serde = "1.1"
+parking_lot = "0.12"
+proptest = "1.7"
+rand = "0.9"
+redis = { version = "0.32", features = ["aio", "tokio-comp", "connection-manager"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2"] }
+schemars = { version = "1.0", features = ["chrono04"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+subtle = "2.6"
+tempfile = "3.21"
+thiserror = "2.0"
+tokio = { version = "1.47", features = ["full"] }
+tokio-util = "0.7"
+tower = { version = "0.5", features = ["limit", "timeout", "util"] }
+tower-http = { version = "0.6", features = ["catch-panic", "compression-gzip", "cors", "limit", "request-id", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+# Keep contributor builds small enough for constrained CI/dev volumes.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

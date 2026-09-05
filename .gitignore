@@ -1,0 +1,15 @@
+/target/
+/.env
+*.pem
+*.key
+*.p12
+*.log
+*.tmp
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+dist/
+coverage/
+reports/
+

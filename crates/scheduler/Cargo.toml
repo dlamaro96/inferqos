@@ -1,0 +1,21 @@
+[package]
+name = "inferqos-scheduler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+inferqos-core = { path = "../core" }
+parking_lot.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[[bench]]
+name = "decision"
+harness = false
+

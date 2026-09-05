@@ -1,0 +1,10 @@
+[package]
+name = "inferqos-provider-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Provider adapter SDK and conformance helpers for InferQoS"
+
+[dependencies]
+inferqos-core = { path = "../core" }
+

@@ -1,0 +1,14 @@
+syntax = "proto3";
+package inferqos.provider.v1;
+
+service ProviderAdapter {
+  rpc Estimate(EstimateRequest) returns (WorkEstimate);
+  rpc Dispatch(stream DispatchChunk) returns (stream DispatchChunk);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+message EstimateRequest { string method = 1; string path = 2; map<string,string> safe_headers = 3; bytes body = 4; }
+message WorkEstimate { uint64 input_tokens = 1; uint64 output_tokens = 2; uint64 cached_input_tokens = 3; double normalized_units = 4; float confidence = 5; string source = 6; }
+message DispatchChunk { string request_id = 1; bytes data = 2; bool end = 3; }
+message HealthRequest {}
+message HealthResponse { bool healthy = 1; string detail = 2; }
+
