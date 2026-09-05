@@ -3,7 +3,33 @@ on:
   pull_request:
   push: { branches: [main] }
 permissions: { contents: read }
+concurrency: { group: 'ci-${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true }
 jobs:
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { fetch-depth: 0 }
+      - name: Verify Developer Certificate of Origin sign-off
+        env:
+          EVENT_NAME: '${{ github.event_name }}'
+          BASE_SHA: '${{ github.event.pull_request.base.sha }}'
+          BEFORE_SHA: '${{ github.event.before }}'
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ]; then
+            range="$BASE_SHA..HEAD"
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            range="$BEFORE_SHA..HEAD"
+          else
+            range="HEAD^..HEAD"
+          fi
+          git log --format='%H' "$range" | while read -r commit; do
+            if ! git show -s --format='%B' "$commit" | grep -qiE '^Signed-off-by: .+ <[^>]+>$'; then
+              echo "Commit $commit lacks a valid Signed-off-by trailer." >&2
+              exit 1
+            fi
+          done
   rust:
     runs-on: ubuntu-latest
     steps:
