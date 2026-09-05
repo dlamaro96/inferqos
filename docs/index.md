@@ -1,8 +1,4 @@
 ---
-title: "Index"
----
-
----
 title: Documentation
 description: Deploy, operate, and extend the InferQoS control plane.
 ---
