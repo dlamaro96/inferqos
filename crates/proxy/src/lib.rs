@@ -139,6 +139,7 @@ struct Inner {
     identity: IdentityResolver,
     concurrency: Mutex<ConcurrencyState>,
     otel: RuntimeMetrics,
+    started_at: Instant,
 }
 
 #[derive(Default)]
@@ -335,6 +336,7 @@ impl AppState {
             identity,
             concurrency: Mutex::new(ConcurrencyState::default()),
             otel: RuntimeMetrics::default(),
+            started_at: Instant::now(),
         }));
         state.start_dispatcher();
         Ok(state)
@@ -1170,9 +1172,23 @@ async fn ready(State(s): State<AppState>) -> Response {
         .into_response()
 }
 async fn status(State(s): State<AppState>) -> impl IntoResponse {
-    axum::Json(
-        serde_json::json!({"version":env!("CARGO_PKG_VERSION"),"draining":s.0.draining.load(Ordering::Relaxed),"active":s.active(),"queue":s.0.scheduler.snapshot()}),
-    )
+    let config = s.0.config.read().await;
+    axum::Json(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "mode": match config.mode { Mode::Enforce => "enforce", Mode::Shadow => "shadow" },
+        "draining": s.0.draining.load(Ordering::Relaxed),
+        "uptime_seconds": s.0.started_at.elapsed().as_secs(),
+        "active": s.active(),
+        "queue": s.0.scheduler.snapshot(),
+        "counters": {
+            "requests": s.0.metrics.requests.load(Ordering::Relaxed),
+            "admitted": s.0.metrics.admitted.load(Ordering::Relaxed),
+            "queued": s.0.metrics.queued.load(Ordering::Relaxed),
+            "rejected": s.0.metrics.rejected.load(Ordering::Relaxed),
+            "shadow_would_queue": s.0.metrics.shadow_would_queue.load(Ordering::Relaxed),
+            "provider_throttles": s.0.metrics.provider_throttles.load(Ordering::Relaxed),
+        }
+    }))
 }
 async fn capacity(State(s): State<AppState>) -> impl IntoResponse {
     let map: BTreeMap<_, _> =
@@ -1288,9 +1304,9 @@ async fn admin_security(State(state): State<AppState>, request: Request, next: N
         .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     response
 }
-const DASHBOARD: &str = r#"<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>InferQoS</title><link rel=stylesheet href=/ui/style.css></head><body><main><h1>InferQoS</h1><p>Finite inference capacity, scheduled fairly. No prompt data is shown or stored.</p><div id=grid class=grid></div></main><script src=/ui/app.js defer></script></body></html>"#;
-const DASHBOARD_CSS: &str = "body{font:15px system-ui;background:#0b1020;color:#e5e7eb;margin:0}main{max-width:1040px;margin:56px auto;padding:24px}h1{font-size:42px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.card{background:#151c31;border:1px solid #26304d;border-radius:12px;padding:18px}.value{font-size:28px;color:#7dd3fc}small{color:#94a3b8}";
-const DASHBOARD_JS: &str = r#"async function refresh(){const [status,capacity,queue]=await Promise.all(['/api/v1/status','/api/v1/capacity','/api/v1/queues'].map(path=>fetch(path).then(response=>response.json())));const cards=[['Active',status.active],['Queue depth',queue.depth],['Pools',Object.keys(capacity).length],['Capacity reserved',Object.values(capacity).reduce((sum,pool)=>sum+pool.reserved_units,0).toFixed(1)]];const grid=document.getElementById('grid');grid.replaceChildren();for(const [label,value] of cards){const card=document.createElement('div');card.className='card';const caption=document.createElement('small');caption.textContent=label;const amount=document.createElement('div');amount.className='value';amount.textContent=String(value);card.append(caption,amount);grid.append(card)}}refresh();setInterval(refresh,2000);"#;
+const DASHBOARD: &str = include_str!("../assets/dashboard.html");
+const DASHBOARD_CSS: &str = include_str!("../assets/dashboard.css");
+const DASHBOARD_JS: &str = include_str!("../assets/dashboard.js");
 
 #[cfg(test)]
 mod tests {
@@ -1299,5 +1315,14 @@ mod tests {
     fn strips_set_cookie() {
         assert!(!response_header_safe("set-cookie"));
         assert!(response_header_safe("content-type"));
+    }
+
+    #[test]
+    fn dashboard_is_csp_compatible_and_privacy_explicit() {
+        assert!(!DASHBOARD.contains("<script>"));
+        assert!(!DASHBOARD.contains("style="));
+        assert!(DASHBOARD.contains("No prompts or completions"));
+        assert!(DASHBOARD_JS.contains("textContent"));
+        assert!(!DASHBOARD_JS.contains("innerHTML"));
     }
 }

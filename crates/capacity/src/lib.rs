@@ -76,6 +76,9 @@ impl CapacityModel {
             return false;
         };
         s.reserved = (s.reserved - charged).max(0.0);
+        if s.reserved < f64::EPSILON * self.configured.max(1.0) * 16.0 {
+            s.reserved = 0.0;
+        }
         let ratio = actual
             .map_or(1.0, |a| a.0 / predicted.0.max(1.0))
             .clamp(0.0, 10.0);
@@ -115,5 +118,15 @@ mod tests {
         let id = m.reserve(WorkUnits(2.0)).unwrap();
         assert!(m.release(id, WorkUnits(2.0), None, false));
         assert!(!m.release(id, WorkUnits(2.0), None, false));
+    }
+
+    #[test]
+    fn release_clears_floating_point_residue() {
+        let model = CapacityModel::new(4096.0, 1.0);
+        let first = model.reserve(WorkUnits(517.0)).unwrap();
+        let second = model.reserve(WorkUnits(517.0)).unwrap();
+        assert!(model.release(first, WorkUnits(517.0), Some(WorkUnits(24.0)), false));
+        assert!(model.release(second, WorkUnits(517.0), Some(WorkUnits(24.0)), false));
+        assert_eq!(model.status().reserved_units, 0.0);
     }
 }

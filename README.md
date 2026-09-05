@@ -7,6 +7,10 @@
 [![Container](https://img.shields.io/badge/ghcr.io-inferqos-blue)](https://github.com/dlamaro96/inferqos/pkgs/container/inferqos)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://dlamaro96.github.io/inferqos/)
 
+[Website](https://web.inferqos-website.daniamaro96.apps.pluglayer.io) ·
+[Interactive demo](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/) ·
+[Verified releases](https://github.com/dlamaro96/inferqos/releases)
+
 **The open-source QoS control plane for finite and contracted AI inference capacity.**
 
 You bought finite AI inference capacity. Bursts cause throttling or force overprovisioning.
@@ -31,7 +35,7 @@ cd inferqos
 docker compose -f deploy/docker/compose.yaml up --build
 ```
 
-Open `http://localhost:9090/ui`, then send an OpenAI-compatible request:
+Open `http://localhost:9090/ui` for the live operations dashboard, then send an OpenAI-compatible request:
 
 ```bash
 export INFERQOS_DEMO_KEY=local-demo-interactive
@@ -66,6 +70,7 @@ switch to enforcement.
 - Executable streaming external-provider gRPC protocol over UDS, loopback, or TLS/mTLS
 - Shadow metrics, JSONL/CSV replay, terminal/JSON/HTML reports, and honest capacity recommendations
 - OTLP traces/metrics, Prometheus, structured logs, health/readiness, and prompt-free dashboard
+- Enterprise operations UI plus a separate public site and deterministic browser-based QoS simulator
 - Docker, Helm, ACA, ECS/Fargate, Cloud Run, and systemd deployment assets
 - Lightweight Python, TypeScript, and Go header helpers
 

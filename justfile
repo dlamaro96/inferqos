@@ -9,6 +9,8 @@ test:
     cargo test --workspace
     (cd sdk/typescript && npm test)
     (cd sdk/go && go test ./...)
+    node --check web/site/site.js
+    node --check web/site/demo/demo.js
 
 fmt:
     cargo fmt --all
@@ -25,6 +27,16 @@ benchmark:
 docs:
     test -f docs/index.md
 
+site:
+    docker build -f web/site/Dockerfile -t inferqos-site:dev .
+    docker run --rm -p 3000:8080 inferqos-site:dev
+
+site-test:
+    node --check web/site/site.js
+    node --check web/site/demo/demo.js
+    docker build -f web/site/Dockerfile -t inferqos-site:test .
+    container=inferqos-site-test; trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT; docker run --rm -d --name "$container" --read-only -p 3000:8080 inferqos-site:test >/dev/null; for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/healthz >/dev/null && break; sleep 0.2; done; tests/integration/site.sh
+
 security:
     cargo audit
     cargo deny check
@@ -32,6 +44,5 @@ security:
 schema:
     cargo run -p inferqos-config --example schema -- config.schema.json
 
-release-check: test lint benchmark docs
+release-check: test lint benchmark docs site-test
     git diff --exit-code
-

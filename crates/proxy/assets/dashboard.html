@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>InferQoS Operations</title>
+  <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to operations</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/ui" aria-label="InferQoS operations home">
+        <span class="brand-mark" aria-hidden="true"><span>IQ</span></span>
+        <span><strong>InferQoS</strong><small>Operations</small></span>
+      </a>
+      <nav class="primary-nav" aria-label="Dashboard sections">
+        <a href="#overview">Overview</a>
+        <a href="#capacity">Capacity</a>
+        <a href="#qos">QoS</a>
+        <a href="#decisions">Decisions</a>
+      </nav>
+      <div class="topbar-actions">
+        <span id="health-chip" class="health-chip" data-state="loading"><i aria-hidden="true"></i><span>Connecting</span></span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme">Theme</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section id="overview" class="page-heading" aria-labelledby="overview-title">
+        <div>
+          <p class="kicker">Finite capacity control plane</p>
+          <h1 id="overview-title">System overview</h1>
+          <p>Live admission, queueing, and capacity calibration. No prompts or completions are displayed or retained.</p>
+        </div>
+        <div class="heading-actions">
+          <div class="freshness"><span>Last refresh</span><time id="updated-at">Waiting for data</time></div>
+          <button id="refresh" class="button" type="button">Refresh now</button>
+        </div>
+      </section>
+
+      <div id="error-banner" class="error-banner" role="alert" hidden>
+        <strong>Operational data unavailable</strong>
+        <span id="error-message">The management API did not respond.</span>
+        <button id="retry" type="button">Retry</button>
+      </div>
+
+      <section class="metric-grid" aria-label="Operational summary">
+        <article class="metric metric-primary"><div><span>Active requests</span><b id="active">-</b></div><p id="active-detail">Across all capacity pools</p></article>
+        <article class="metric"><div><span>Queue depth</span><b id="queue-depth">-</b></div><p id="queue-detail">0 bytes buffered</p></article>
+        <article class="metric"><div><span>Admission rate</span><b id="admission-rate">-</b></div><p id="admission-detail">Since process start</p></article>
+        <article class="metric"><div><span>Provider throttles</span><b id="throttles">-</b></div><p id="throttle-detail">Observed upstream feedback</p></article>
+      </section>
+
+      <section class="operations-grid" aria-label="Traffic and capacity summary">
+        <article class="panel traffic-panel">
+          <header class="panel-heading">
+            <div><h2>Admission activity</h2><p>Requests admitted per refresh interval</p></div>
+            <span id="mode-badge" class="mode-badge">Unknown mode</span>
+          </header>
+          <div class="chart-wrap"><canvas id="activity-chart" role="img" aria-label="Admission activity over recent refreshes"></canvas></div>
+          <div class="chart-legend"><span><i class="legend-admitted"></i>Admitted</span><span><i class="legend-rejected"></i>Rejected</span></div>
+        </article>
+        <article class="panel health-panel">
+          <header class="panel-heading"><div><h2>Runtime health</h2><p>Current process and scheduler state</p></div></header>
+          <dl class="status-list">
+            <div><dt>Readiness</dt><dd id="readiness">Checking</dd></div>
+            <div><dt>Version</dt><dd id="version">-</dd></div>
+            <div><dt>Uptime</dt><dd id="uptime">-</dd></div>
+            <div><dt>Active queues</dt><dd id="active-queues">-</dd></div>
+            <div><dt>Drain state</dt><dd id="drain-state">-</dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <section id="capacity" class="section-block" aria-labelledby="capacity-title">
+        <header class="section-heading"><div><p class="kicker">Capacity</p><h2 id="capacity-title">Pool pressure and calibration</h2><p>Reservations are predicted work charged against each pool. Safety factors adapt from actual usage and throttle feedback.</p></div></header>
+        <div id="capacity-pools" class="pool-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="qos" class="section-block" aria-labelledby="qos-title">
+        <header class="section-heading"><div><p class="kicker">QoS</p><h2 id="qos-title">Service class outcomes</h2><p>Recent decision metadata grouped by effective class. Content and raw user identity are excluded.</p></div></header>
+        <div class="table-shell">
+          <table>
+            <thead><tr><th>Service class</th><th>Decisions</th><th>Queued</th><th>Rejected</th><th>Queue p95</th><th>Work units</th></tr></thead>
+            <tbody id="class-rows"><tr><td colspan="6" class="empty-cell">Waiting for decisions</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="decisions" class="section-block" aria-labelledby="decisions-title">
+        <header class="section-heading decisions-heading"><div><p class="kicker">Explainability</p><h2 id="decisions-title">Recent admission decisions</h2><p>A bounded in-memory history for debugging policy and fairness behavior.</p></div><span id="decision-count" class="record-count">0 records</span></header>
+        <div class="table-shell decisions-table">
+          <table>
+            <thead><tr><th>Request</th><th>Class</th><th>Tenant / application</th><th>Pool</th><th>Estimated work</th><th>Queue</th><th>Outcome</th></tr></thead>
+            <tbody id="decision-rows"><tr><td colspan="7" class="empty-cell">No decisions recorded yet. Send traffic through the proxy to populate this view.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>InferQoS operates without project analytics or phone-home telemetry.</span><a href="/metrics">Prometheus metrics</a></footer>
+  </div>
+
+  <dialog id="auth-dialog">
+    <form id="auth-form" method="dialog">
+      <p class="kicker">Protected management plane</p>
+      <h2>Enter admin bearer token</h2>
+      <p>This token stays in this browser tab and is never written to persistent storage.</p>
+      <label for="admin-token">Bearer token</label>
+      <input id="admin-token" name="token" type="password" autocomplete="off" required>
+      <div class="dialog-actions"><button class="button primary-button" value="submit">Connect</button></div>
+      <p id="auth-error" class="field-error" hidden>That token was not accepted.</p>
+    </form>
+  </dialog>
+  <script src="/ui/app.js" defer></script>
+</body>
+</html>

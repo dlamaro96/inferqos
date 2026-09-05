@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://web.inferqos-website.daniamaro96.apps.pluglayer.io/sitemap.xml

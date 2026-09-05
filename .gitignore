@@ -14,6 +14,7 @@ coverage/
 __pycache__/
 *.py[cod]
 reports/
+.pluglayer/
 **/.terraform/
 *.tfstate
 *.tfstate.*

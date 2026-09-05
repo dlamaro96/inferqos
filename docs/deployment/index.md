@@ -42,3 +42,7 @@ never accept long-lived credentials as arguments.
 For rolling updates, terminate only after readiness removal and allow the 30-second drain budget.
 Validate new configuration before deployment. Roll back the image tag and prior Git-managed config;
 ephemeral reservations recover through lease expiry.
+
+For the project website and an isolated OCI validation example, see the
+[PlugLayer deployment boundary](pluglayer.md). PlugLayer is optional and is not a runtime
+dependency of InferQoS.
