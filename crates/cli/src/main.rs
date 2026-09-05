@@ -684,7 +684,7 @@ fn version() {
         "inferqos {}\ngit_sha {}\nbuild_target {}\nfeatures default",
         env!("CARGO_PKG_VERSION"),
         option_env!("INFERQOS_GIT_SHA").unwrap_or("unknown"),
-        option_env!("TARGET").unwrap_or(std::env::consts::ARCH)
+        option_env!("INFERQOS_BUILD_TARGET").unwrap_or(std::env::consts::ARCH)
     )
 }
 async fn explain(id: Uuid, admin: &str) -> Result<()> {

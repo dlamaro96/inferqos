@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.7
 FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS build
+ARG INFERQOS_GIT_SHA=unknown
+ARG TARGETPLATFORM
+ENV INFERQOS_GIT_SHA=${INFERQOS_GIT_SHA}
+ENV INFERQOS_BUILD_TARGET=${TARGETPLATFORM}
 WORKDIR /src
 COPY . .
 RUN cargo build --locked --release --bin inferqos
