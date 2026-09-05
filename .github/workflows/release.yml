@@ -56,6 +56,12 @@ jobs:
           platforms: 'linux/amd64,linux/arm64'
           push: true
           tags: 'ghcr.io/${{ github.repository }}:${{ github.ref_name }},ghcr.io/${{ github.repository }}:latest'
+          labels: |
+            org.opencontainers.image.title=InferQoS
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.licenses=Apache-2.0
           build-args: INFERQOS_GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -75,7 +81,7 @@ jobs:
         with: { path: artifacts, pattern: '*-arm64', merge-multiple: true }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { path: artifacts, name: image.spdx.json }
-      - run: cd artifacts && sha256sum ./*.tar.gz > SHA256SUMS
+      - run: cd artifacts && sha256sum ./*.tar.gz ./image.spdx.json > SHA256SUMS
       - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
       - name: Sign checksum manifest with keyless Sigstore identity
         run: cosign sign-blob --yes --bundle artifacts/SHA256SUMS.bundle artifacts/SHA256SUMS
