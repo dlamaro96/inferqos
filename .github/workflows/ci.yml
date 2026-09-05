@@ -14,11 +14,12 @@ jobs:
         env:
           EVENT_NAME: '${{ github.event_name }}'
           BASE_SHA: '${{ github.event.pull_request.base.sha }}'
+          HEAD_SHA: '${{ github.event.pull_request.head.sha }}'
           BEFORE_SHA: '${{ github.event.before }}'
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = pull_request ]; then
-            range="$BASE_SHA..HEAD"
+            range="$BASE_SHA..$HEAD_SHA"
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
             range="$BEFORE_SHA..HEAD"
           else
