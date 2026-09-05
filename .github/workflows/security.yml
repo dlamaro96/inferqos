@@ -3,11 +3,12 @@ on:
   pull_request:
   push: { branches: [main] }
   schedule: [{ cron: '23 4 * * 1' }]
-permissions: { contents: read, security-events: write }
+permissions: { contents: read }
 concurrency: { group: 'security-${{ github.ref }}', cancel-in-progress: true }
 jobs:
   codeql:
     runs-on: ubuntu-latest
+    permissions: { contents: read, security-events: write }
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: github/codeql-action/init@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3
