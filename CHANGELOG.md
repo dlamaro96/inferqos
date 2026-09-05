@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 - 2026-09-05
+
+- Rebuilt the embedded management dashboard around live capacity pressure, calibration confidence,
+  class outcomes, runtime health, and bounded explainable decision metadata.
+- Added a separate dependency-free public website with responsive light/dark modes, security and
+  architecture content, and an interactive deterministic `/demo/` scheduler comparison.
+- Added isolated PlugLayer deployment assets, tests, and documentation without making PlugLayer a
+  runtime dependency.
+- Expanded the management status API with mode, uptime, and admission counters while preserving
+  content-free telemetry and strict browser security headers.
+
 ## 0.1.0 - 2026-09-05
 
 - Initial finite-capacity QoS proxy, scheduler, adaptive ledger, Valkey coordinator, provider
