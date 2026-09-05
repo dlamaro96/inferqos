@@ -19,7 +19,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -28,17 +28,17 @@ homepage = "https://dlamaro96.github.io/inferqos"
 authors = ["InferQoS contributors"]
 
 [workspace.dependencies]
-inferqos-capacity = { path = "crates/capacity", version = "0.2.0" }
-inferqos-config = { path = "crates/config", version = "0.2.0" }
-inferqos-coordinator = { path = "crates/coordinator", version = "0.2.0" }
-inferqos-core = { path = "crates/core", version = "0.2.0" }
-inferqos-identity = { path = "crates/identity", version = "0.2.0" }
-inferqos-telemetry = { path = "crates/telemetry", version = "0.2.0" }
-inferqos-provider-protocol = { path = "crates/provider-protocol", version = "0.2.0" }
-inferqos-providers = { path = "crates/providers", version = "0.2.0" }
-inferqos-proxy = { path = "crates/proxy", version = "0.2.0" }
-inferqos-scheduler = { path = "crates/scheduler", version = "0.2.0" }
-inferqos-simulator = { path = "crates/simulator", version = "0.2.0" }
+inferqos-capacity = { path = "crates/capacity", version = "0.2.1" }
+inferqos-config = { path = "crates/config", version = "0.2.1" }
+inferqos-coordinator = { path = "crates/coordinator", version = "0.2.1" }
+inferqos-core = { path = "crates/core", version = "0.2.1" }
+inferqos-identity = { path = "crates/identity", version = "0.2.1" }
+inferqos-telemetry = { path = "crates/telemetry", version = "0.2.1" }
+inferqos-provider-protocol = { path = "crates/provider-protocol", version = "0.2.1" }
+inferqos-providers = { path = "crates/providers", version = "0.2.1" }
+inferqos-proxy = { path = "crates/proxy", version = "0.2.1" }
+inferqos-scheduler = { path = "crates/scheduler", version = "0.2.1" }
+inferqos-simulator = { path = "crates/simulator", version = "0.2.1" }
 anyhow = "1.0"
 async-trait = "0.1"
 async-nats = "0.50"

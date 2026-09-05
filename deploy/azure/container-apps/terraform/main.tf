@@ -20,7 +20,7 @@ variable "config_yaml" {
 }
 variable "image" {
   type    = string
-  default = "ghcr.io/dlamaro96/inferqos:v0.2.0"
+  default = "ghcr.io/dlamaro96/inferqos:v0.2.1"
 }
 
 resource "azurerm_log_analytics_workspace" "this" {
