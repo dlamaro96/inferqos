@@ -22,7 +22,9 @@ operators need live data, while evaluators need a reproducible model with explic
   It reads only versioned management APIs, has no external resources, and inherits management-plane
   authentication and CSP controls.
 - The public website is a separate static, unprivileged OCI workload. It never proxies inference,
-  never reads operational APIs, and contains no analytics.
+  never reads operational APIs, and contains no analytics. Its source and deployment lifecycle live
+  in a separate private repository so the OSS product tree remains focused on the distributable
+  control plane, embedded operational UI, documentation, and integration contracts.
 - `/demo/` is a deterministic browser-only educational simulation. It compares admission policies
   against the same generated metadata and clearly states that it is not a provider benchmark.
 - Historical analysis intended for real capacity decisions remains in `inferqos analyze` and
@@ -31,6 +33,7 @@ operators need live data, while evaluators need a reproducible model with explic
 
 ## Consequences
 
-The data plane remains small and deployable without Node.js or a frontend build. The public site can
-be deployed and scaled independently. Operators do not need an external dashboard dependency, and
-the public demo cannot access prompts, credentials, tenant identities, or runtime state.
+The data plane remains small and deployable without Node.js or a marketing frontend build. The
+public site can be deployed and scaled independently. Operators do not need an external dashboard
+dependency, and the public demo cannot access prompts, credentials, tenant identities, or runtime
+state. Public releases do not contain or build the website source.

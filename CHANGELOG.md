@@ -4,8 +4,9 @@
 
 - Rebuilt the embedded management dashboard around live capacity pressure, calibration confidence,
   class outcomes, runtime health, and bounded explainable decision metadata.
-- Added a separate dependency-free public website with responsive light/dark modes, security and
-  architecture content, and an interactive deterministic `/demo/` scheduler comparison.
+- Linked a separately maintained public website with responsive light/dark modes and an interactive
+  deterministic `/demo/` scheduler comparison; its source and deployment remain outside the OSS
+  product repository.
 - Added isolated PlugLayer deployment assets, tests, and documentation without making PlugLayer a
   runtime dependency.
 - Expanded the management status API with mode, uptime, and admission counters while preserving

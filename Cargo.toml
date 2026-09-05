@@ -16,7 +16,6 @@ members = [
   "crates/identity",
   "crates/telemetry",
   "crates/provider-protocol",
-  "crates/site",
 ]
 
 [workspace.package]

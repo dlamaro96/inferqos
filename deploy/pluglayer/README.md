@@ -3,7 +3,8 @@
 The production website and the disposable runtime validation stack are intentionally separate
 PlugLayer projects.
 
-- `web/site/Dockerfile` builds the permanent public website and browser-only simulator.
+- The permanent public website and browser-only simulator are built from a separate
+  private-source repository.
 - `Dockerfile.runtime-test` embeds only the zero-key demo configuration for disposable live tests.
 - `deploy/docker/Dockerfile.fake` builds the deterministic finite-capacity provider used by tests.
 
