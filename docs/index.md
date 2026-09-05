@@ -7,7 +7,7 @@ description: Deploy, operate, and extend the InferQoS control plane.
   <small>ENGINEERING DOCUMENTATION</small>
   <h1>Make finite inference capacity behave like infrastructure.</h1>
   <p>Deploy the Rust data plane, define service classes and fair shares, evaluate in shadow mode, and understand every admission decision.</p>
-  <nav><a href="https://github.com/dlamaro96/inferqos#run-the-live-demo">Run the five-minute demo</a><a href="https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/">Open the traffic lab</a></nav>
+  <nav><a href="https://github.com/dlamaro96/inferqos#see-it-work-now">Run the five-minute demo</a><a href="https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/">Open the traffic lab</a></nav>
 </section>
 
 <div class="docs-note"><i></i><p>No paid provider key is required for the local demo. The default configuration logs no prompts or completions and sends no project analytics.</p></div>
@@ -20,6 +20,16 @@ description: Deploy, operate, and extend the InferQoS control plane.
   <a class="doc-card" href="deployment/"><small>SHIP</small><h2>Deployment</h2><p>One binary from Docker to Kubernetes, ACA, ECS, Cloud Run, and systemd.</p></a>
   <a class="doc-card" href="operations/runbook.html"><small>OPERATE</small><h2>Runbook</h2><p>Capacity pressure, coordinator failures, SLOs, alerts, and graceful degradation.</p></a>
 </div>
+
+## Decide before deploying
+
+| Question | Start here |
+|---|---|
+| What does each cloud require and roughly cost? | [Requirements, sizing, HA, and cost](deployment/requirements-and-cost.html) |
+| What can an administrator control? | [Annotated configuration reference](reference/configuration.html) |
+| Can I test without provider credentials? | [Live traffic lab](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/) or the local fake-provider demo below |
+| Should SDKs be separate repositories? | [ADR 0013: scale-driven SDK repository strategy](adr/0013-sdk-repository-strategy.html) |
+| What is shipping next? | [Evidence-driven roadmap](https://github.com/dlamaro96/inferqos/blob/main/ROADMAP.md) |
 
 ## The shortest useful path
 

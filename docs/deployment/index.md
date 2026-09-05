@@ -4,6 +4,10 @@ title: "Deployment"
 
 # Deployment
 
+Start with the [requirements and cost guide](requirements-and-cost.html) to choose a target, size
+the first deployment, understand what is and is not included in the estimate, and decide whether
+you need Valkey-backed HA.
+
 `inferqos deploy --target docker|aca|kubernetes|ecs|cloud-run|systemd` validates the required CLI,
 shows the command, runs it, and directs the operator to readiness. Cloud authentication remains the
 operator’s normal `az`, `aws`, or `gcloud` login. Production deployments use private networking,

@@ -4,6 +4,8 @@ title: "Architecture"
 
 # Architecture
 
+![InferQoS request path, trust boundaries, providers, HA coordinator, and admin plane](../assets/architecture.svg)
+
 ```text
 untrusted client → [trusted gateway] → data plane → provider
                                       │
