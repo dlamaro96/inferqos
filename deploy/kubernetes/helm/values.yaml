@@ -4,11 +4,11 @@ image:
   tag: "0.1.0"
   pullPolicy: IfNotPresent
 configSecretName: inferqos-config
+config: ""
 service: { port: 8080, adminPort: 9090 }
 resources:
   requests: { cpu: 100m, memory: 128Mi }
   limits: { cpu: "1", memory: 512Mi }
 autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70 }
-serviceMonitor: { enabled: false }
-ingress: { enabled: false }
-
+serviceMonitor: { enabled: false, interval: 15s }
+ingress: { enabled: false, className: "", host: "", annotations: {} }

@@ -13,7 +13,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -53,12 +52,7 @@ enum Commands {
         #[arg(long, default_value_t = 100_000)]
         decisions: u64,
     },
-    Deploy {
-        #[arg(long, value_enum, default_value = "auto")]
-        target: DeployTarget,
-        #[arg(long)]
-        dry_run: bool,
-    },
+    Deploy(DeployArgs),
     Upgrade {
         #[arg(long)]
         check: bool,
@@ -122,6 +116,31 @@ struct ReplayArgs {
     #[arg(long)]
     html: Option<PathBuf>,
 }
+#[derive(Args)]
+struct DeployArgs {
+    #[arg(long, value_enum, default_value = "auto")]
+    target: DeployTarget,
+    #[arg(long)]
+    dry_run: bool,
+    #[arg(short, long, default_value = "inferqos.yaml")]
+    config: PathBuf,
+    #[arg(long, default_value = "ghcr.io/dlamaro96/inferqos:latest")]
+    image: String,
+    #[arg(long, default_value = "inferqos")]
+    name: String,
+    #[arg(long)]
+    resource_group: Option<String>,
+    #[arg(long)]
+    region: Option<String>,
+    #[arg(long)]
+    project: Option<String>,
+    #[arg(long)]
+    vpc_id: Option<String>,
+    #[arg(long, value_delimiter = ',')]
+    subnets: Vec<String>,
+    #[arg(long)]
+    config_secret: Option<String>,
+}
 #[derive(Clone, Copy, ValueEnum)]
 enum DeployTarget {
     Auto,
@@ -135,13 +154,8 @@ enum DeployTarget {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("inferqos=info")),
-        )
-        .with_target(false)
-        .init();
-    match Cli::parse().command {
+    let telemetry = inferqos_telemetry::init()?;
+    let result = match Cli::parse().command {
         Commands::Serve(a) => serve(a.config, None).await,
         Commands::Shadow(a) => serve(a.config, Some(Mode::Shadow)).await,
         Commands::Init { output, enforce } => init(&output, enforce),
@@ -151,7 +165,7 @@ async fn main() -> Result<()> {
         Commands::Capacity { command } => capacity(command).await,
         Commands::Analyze(a) | Commands::Replay(a) => replay(a),
         Commands::Benchmark { decisions } => benchmark(decisions),
-        Commands::Deploy { target, dry_run } => deploy(target, dry_run),
+        Commands::Deploy(args) => deploy(args),
         Commands::Upgrade { check } => upgrade(check).await,
         Commands::Version => {
             version();
@@ -159,7 +173,9 @@ async fn main() -> Result<()> {
         }
         Commands::Explain { request_id, admin } => explain(request_id, &admin).await,
         Commands::Diagnostics { command } => diagnostics(command).await,
-    }
+    };
+    telemetry.shutdown();
+    result
 }
 
 async fn serve(path: PathBuf, mode: Option<Mode>) -> Result<()> {
@@ -170,9 +186,7 @@ async fn serve(path: PathBuf, mode: Option<Mode>) -> Result<()> {
     let data = config.server.listen;
     let admin = config.admin.listen;
     let app = AppState::build(config.clone()).await?;
-    let data_listener = tokio::net::TcpListener::bind(data)
-        .await
-        .with_context(|| format!("cannot bind proxy at {data}"))?;
+    app.start_config_reload(path.clone(), config.server.config_reload_interval);
     let admin_listener = tokio::net::TcpListener::bind(admin)
         .await
         .with_context(|| format!("cannot bind admin at {admin}"))?;
@@ -183,15 +197,94 @@ async fn serve(path: PathBuf, mode: Option<Mode>) -> Result<()> {
     );
     let data_app = app.data_router();
     let admin_app = app.admin_router();
-    let data_server = axum::serve(data_listener, data_app);
     let admin_server = axum::serve(admin_listener, admin_app);
-    tokio::select! {r=data_server=>r.context("proxy server failed")?,r=admin_server=>r.context("admin server failed")?,_=tokio::signal::ctrl_c()=>{}}
+    if let Some(tls) = &config.server.tls {
+        let rustls = load_mtls_config(tls).await?;
+        let acceptor = MtlsAcceptor::new(axum_server::tls_rustls::RustlsAcceptor::new(rustls));
+        let data_server = axum_server::bind(data)
+            .acceptor(acceptor)
+            .serve(data_app.into_make_service_with_connect_info::<std::net::SocketAddr>());
+        tokio::select! {r=data_server=>r.context("mTLS proxy server failed")?,r=admin_server=>r.context("admin server failed")?,_=shutdown_signal()=>{}}
+    } else {
+        let data_listener = tokio::net::TcpListener::bind(data)
+            .await
+            .with_context(|| format!("cannot bind proxy at {data}"))?;
+        let data_server = axum::serve(
+            data_listener,
+            data_app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        );
+        tokio::select! {r=data_server=>r.context("proxy server failed")?,r=admin_server=>r.context("admin server failed")?,_=shutdown_signal()=>{}}
+    }
     app.begin_drain();
     let deadline = Instant::now() + Duration::from_secs(30);
     while app.active() > 0 && Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(50)).await
     }
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("SIGTERM handler installation must succeed");
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+async fn load_mtls_config(
+    tls: &inferqos_config::ServerTlsConfig,
+) -> Result<axum_server::tls_rustls::RustlsConfig> {
+    use rustls::{
+        RootCertStore,
+        pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+        server::WebPkiClientVerifier,
+    };
+
+    let cert_pem = tokio::fs::read(&tls.cert_file).await.with_context(|| {
+        format!(
+            "cannot read server TLS certificate {}",
+            tls.cert_file.display()
+        )
+    })?;
+    let key_pem = tokio::fs::read(&tls.key_file).await.with_context(|| {
+        format!(
+            "cannot read server TLS private key {}",
+            tls.key_file.display()
+        )
+    })?;
+    let ca_pem = tokio::fs::read(&tls.client_ca_file)
+        .await
+        .with_context(|| {
+            format!(
+                "cannot read mTLS client CA {}",
+                tls.client_ca_file.display()
+            )
+        })?;
+    let certs = CertificateDer::pem_slice_iter(&cert_pem).collect::<Result<Vec<_>, _>>()?;
+    let key = PrivateKeyDer::from_pem_slice(&key_pem)
+        .context("server TLS private key file contains no supported private key")?;
+    let mut roots = RootCertStore::empty();
+    let client_roots = CertificateDer::pem_slice_iter(&ca_pem).collect::<Result<Vec<_>, _>>()?;
+    let (added, ignored) = roots.add_parsable_certificates(client_roots);
+    if added == 0 || ignored > 0 {
+        bail!("mTLS client CA contains no usable certificates or contains malformed certificates");
+    }
+    let verifier = WebPkiClientVerifier::builder(Arc::new(roots))
+        .build()
+        .context("cannot build mTLS client verifier")?;
+    let server = rustls::ServerConfig::builder()
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(certs, key)
+        .context("server TLS certificate and private key do not match")?;
+    Ok(axum_server::tls_rustls::RustlsConfig::from_config(
+        Arc::new(server),
+    ))
 }
 fn init(path: &Path, enforce: bool) -> Result<()> {
     if path.exists() {
@@ -359,23 +452,57 @@ fn benchmark(n: u64) -> Result<()> {
     );
     Ok(())
 }
-fn deploy(target: DeployTarget, dry: bool) -> Result<()> {
-    let target = match target {
+fn deploy(options: DeployArgs) -> Result<()> {
+    Config::from_path(&options.config).context("deployment configuration is invalid")?;
+    let target = match options.target {
         DeployTarget::Auto if which("docker") => DeployTarget::Docker,
         DeployTarget::Auto => bail!(
             "auto detection found no safe target; install Docker or select --target explicitly"
         ),
         x => x,
     };
+    let required = |value: &Option<String>, flag: &str| {
+        value
+            .clone()
+            .with_context(|| format!("{} deployment requires {flag}", target_name(target)))
+    };
+    let config = options.config.canonicalize().with_context(|| {
+        format!(
+            "cannot resolve deployment config {}",
+            options.config.display()
+        )
+    })?;
+    let (image_repository, image_tag) = options
+        .image
+        .rsplit_once(':')
+        .map_or((options.image.as_str(), "latest"), |(repository, tag)| {
+            (repository, tag)
+        });
     let (cmd, args): (String, Vec<String>) = match target {
         DeployTarget::Docker => (
             "docker".into(),
             vec![
-                "compose".into(),
-                "-f".into(),
-                "deploy/docker/compose.yaml".into(),
-                "up".into(),
+                "run".into(),
                 "-d".into(),
+                "--name".into(),
+                options.name.clone(),
+                "--restart".into(),
+                "unless-stopped".into(),
+                "--read-only".into(),
+                "--security-opt".into(),
+                "no-new-privileges:true".into(),
+                "--tmpfs".into(),
+                "/tmp:rw,noexec,nosuid,size=64m".into(),
+                "-p".into(),
+                "8080:8080".into(),
+                "-p".into(),
+                "127.0.0.1:9090:9090".into(),
+                "-v".into(),
+                format!("{}:/etc/inferqos/inferqos.yaml:ro", config.display()),
+                options.image.clone(),
+                "serve".into(),
+                "--config".into(),
+                "/etc/inferqos/inferqos.yaml".into(),
             ],
         ),
         DeployTarget::Kubernetes => (
@@ -388,6 +515,10 @@ fn deploy(target: DeployTarget, dry: bool) -> Result<()> {
                 "--namespace".into(),
                 "inferqos".into(),
                 "--create-namespace".into(),
+                "--set-string".into(),
+                format!("image.repository={image_repository},image.tag={image_tag}"),
+                "--set-file".into(),
+                format!("config={}", config.display()),
             ],
         ),
         DeployTarget::Aca => (
@@ -396,8 +527,15 @@ fn deploy(target: DeployTarget, dry: bool) -> Result<()> {
                 "deployment".into(),
                 "group".into(),
                 "create".into(),
+                "--resource-group".into(),
+                required(&options.resource_group, "--resource-group")?,
+                "--name".into(),
+                options.name.clone(),
                 "--template-file".into(),
                 "deploy/azure/container-apps/main.bicep".into(),
+                "--parameters".into(),
+                format!("configYaml=@{}", config.display()),
+                format!("image={}", options.image),
             ],
         ),
         DeployTarget::Ecs => (
@@ -408,38 +546,103 @@ fn deploy(target: DeployTarget, dry: bool) -> Result<()> {
                 "--template-file".into(),
                 "deploy/aws/ecs/template.yaml".into(),
                 "--stack-name".into(),
-                "inferqos".into(),
+                options.name.clone(),
                 "--capabilities".into(),
                 "CAPABILITY_NAMED_IAM".into(),
+                "--region".into(),
+                required(&options.region, "--region")?,
+                "--parameter-overrides".into(),
+                format!("Image={}", options.image),
+                format!("VpcId={}", required(&options.vpc_id, "--vpc-id")?),
+                format!(
+                    "Subnets={}",
+                    if options.subnets.is_empty() {
+                        bail!("ecs deployment requires --subnets subnet-a,subnet-b")
+                    } else {
+                        options.subnets.join(",")
+                    }
+                ),
+                format!(
+                    "ConfigSecretArn={}",
+                    required(&options.config_secret, "--config-secret")?
+                ),
             ],
         ),
         DeployTarget::CloudRun => (
             "gcloud".into(),
             vec![
                 "run".into(),
-                "services".into(),
-                "replace".into(),
-                "deploy/gcp/cloud-run/service.yaml".into(),
+                "deploy".into(),
+                options.name.clone(),
+                "--image".into(),
+                options.image.clone(),
+                "--project".into(),
+                required(&options.project, "--project")?,
+                "--region".into(),
+                required(&options.region, "--region")?,
+                "--ingress".into(),
+                "internal".into(),
+                "--no-allow-unauthenticated".into(),
+                "--min".into(),
+                "2".into(),
+                "--max".into(),
+                "10".into(),
+                "--concurrency".into(),
+                "50".into(),
+                "--port".into(),
+                "8080".into(),
+                "--set-secrets".into(),
+                format!(
+                    "INFERQOS_CONFIG_YAML={}:latest",
+                    required(&options.config_secret, "--config-secret")?
+                ),
+                "--args".into(),
+                "serve,--config,/etc/inferqos/runtime.yaml".into(),
             ],
         ),
         DeployTarget::Systemd => (
             "sudo".into(),
             vec![
-                "install".into(),
-                "-m".into(),
-                "0644".into(),
-                "deploy/systemd/inferqos.service".into(),
-                "/etc/systemd/system/inferqos.service".into(),
+                "bash".into(),
+                "deploy/systemd/install.sh".into(),
+                std::env::current_exe()
+                    .context("cannot locate the running InferQoS binary")?
+                    .display()
+                    .to_string(),
+                config.display().to_string(),
             ],
         ),
         DeployTarget::Auto => unreachable!(),
     };
     println!("Will run: {cmd} {}", args.join(" "));
-    if dry {
+    if options.dry_run {
         return Ok(());
     }
     if !which(&cmd) {
         bail!("required deployment command '{cmd}' is not installed")
+    }
+    let auth_check: Option<(&str, &[&str])> = match target {
+        DeployTarget::Docker => Some(("docker", &["info"])),
+        DeployTarget::Aca => Some(("az", &["account", "show", "--output", "none"])),
+        DeployTarget::Kubernetes => Some(("kubectl", &["cluster-info"])),
+        DeployTarget::Ecs => Some(("aws", &["sts", "get-caller-identity", "--output", "json"])),
+        DeployTarget::CloudRun => Some(("gcloud", &["auth", "print-access-token"])),
+        DeployTarget::Systemd | DeployTarget::Auto => None,
+    };
+    if let Some((tool, args)) = auth_check {
+        if !which(tool) {
+            bail!("deployment target requires '{tool}', but it is not on PATH")
+        }
+        let status = Command::new(tool)
+            .args(args)
+            .status()
+            .with_context(|| format!("could not execute {tool} authentication check"))?;
+        if !status.success() {
+            bail!(
+                "{tool} authentication or target connectivity check failed; authenticate normally, then run inferqos doctor --target {}",
+                target_name(target)
+            )
+        }
     }
     let status = Command::new(&cmd)
         .args(&args)
@@ -451,7 +654,9 @@ fn deploy(target: DeployTarget, dry: bool) -> Result<()> {
             target_name(target)
         )
     }
-    println!("Deployment command completed. Verify /health/ready at the deployed admin endpoint.");
+    println!(
+        "Deployment completed. Admin access remains private by default. Verify /health/ready from the target network, then point a client base URL at the data-plane endpoint."
+    );
     Ok(())
 }
 async fn upgrade(check: bool) -> Result<()> {
@@ -501,6 +706,93 @@ async fn diagnostics(command: DiagnosticsCommand) -> Result<()> {
     println!("Wrote sanitized diagnostic bundle to {}", output.display());
     Ok(())
 }
+
+#[derive(Clone, Debug)]
+struct MtlsAcceptor<A = axum_server::accept::DefaultAcceptor> {
+    inner: axum_server::tls_rustls::RustlsAcceptor<A>,
+}
+
+impl MtlsAcceptor {
+    fn new(inner: axum_server::tls_rustls::RustlsAcceptor) -> Self {
+        Self { inner }
+    }
+}
+
+impl<I, S, A> axum_server::accept::Accept<I, S> for MtlsAcceptor<A>
+where
+    A: axum_server::accept::Accept<I, S> + Clone + Send + 'static,
+    A::Stream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
+    A::Service: Send,
+    A::Future: Send,
+    I: Send + 'static,
+    S: Send + 'static,
+{
+    type Stream = tokio_rustls::server::TlsStream<A::Stream>;
+    type Service = VerifiedCertificateService<A::Service>;
+    type Future = std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send,
+        >,
+    >;
+
+    fn accept(&self, stream: I, service: S) -> Self::Future {
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            use sha2::{Digest, Sha256};
+            let (tls_stream, inner_service) = inner.accept(stream, service).await?;
+            let (_, connection) = tls_stream.get_ref();
+            let fingerprints = connection
+                .peer_certificates()
+                .into_iter()
+                .flatten()
+                .map(|certificate| {
+                    Sha256::digest(certificate.as_ref())
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect()
+                })
+                .collect();
+            let certificate = inferqos_identity::VerifiedClientCertificate {
+                sha256_fingerprints: fingerprints,
+            };
+            Ok((
+                tls_stream,
+                VerifiedCertificateService {
+                    inner: inner_service,
+                    certificate,
+                },
+            ))
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct VerifiedCertificateService<S> {
+    inner: S,
+    certificate: inferqos_identity::VerifiedClientCertificate,
+}
+
+impl<S, B> tower_service::Service<http::Request<B>> for VerifiedCertificateService<S>
+where
+    S: tower_service::Service<http::Request<B>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(context)
+    }
+
+    fn call(&mut self, mut request: http::Request<B>) -> Self::Future {
+        request.extensions_mut().insert(self.certificate.clone());
+        self.inner.call(request)
+    }
+}
+
 fn which(name: &str) -> bool {
     Command::new(name).arg("--version").output().is_ok()
 }

@@ -188,20 +188,20 @@ impl Scheduler {
         let Some(key) = state.index.remove(&id) else {
             return false;
         };
-        let mut removed_bytes = 0;
+        let mut removed = None;
         if let Some(queue) = state.queues.get_mut(&key)
             && let Some(pos) = queue.items.iter().position(|q| q.request.id == id)
         {
-            removed_bytes = queue.items.remove(pos).map_or(0, |q| q.body_bytes);
+            removed = queue.items.remove(pos).map(|q| q.body_bytes);
         }
-        if removed_bytes > 0 {
+        if let Some(removed_bytes) = removed {
             state.depth -= 1;
             state.bytes -= removed_bytes;
         }
         if state.queues.get(&key).is_some_and(|q| q.items.is_empty()) {
             state.queues.remove(&key);
         }
-        removed_bytes > 0
+        removed.is_some()
     }
     pub fn pop_next(&self) -> Option<AdmissionRequest> {
         let now = self.clock.now_ns();
@@ -379,6 +379,68 @@ mod tests {
         s.enqueue(r, 99, 1, 1, 1).unwrap();
         assert!(s.cancel(id));
         assert_eq!(s.snapshot().bytes, 0);
+    }
+    #[test]
+    fn zero_byte_cancellation_frees_depth() {
+        let clock = Arc::new(VirtualClock::default());
+        let scheduler = Scheduler::new(clock.clone(), SchedulerConfig::default());
+        let request = request(
+            &clock,
+            "a",
+            ServiceClass::Standard,
+            1.0,
+            Duration::from_secs(1),
+        );
+        let id = request.id;
+        scheduler.enqueue(request, 0, 1, 1, 1).unwrap();
+        assert!(scheduler.cancel(id));
+        assert_eq!(scheduler.snapshot().depth, 0);
+    }
+    #[test]
+    fn bounded_high_priority_load_does_not_starve_batch() {
+        let clock = Arc::new(VirtualClock::default());
+        let scheduler = Scheduler::new(clock.clone(), SchedulerConfig::default());
+        let batch = request(
+            &clock,
+            "batch",
+            ServiceClass::Batch,
+            1.0,
+            Duration::from_secs(60),
+        );
+        let batch_id = batch.id;
+        scheduler.enqueue(batch, 1, 1, 1, 1).unwrap();
+        for _ in 0..100 {
+            scheduler
+                .enqueue(
+                    request(
+                        &clock,
+                        "interactive",
+                        ServiceClass::Interactive,
+                        1.0,
+                        Duration::from_secs(3),
+                    ),
+                    1,
+                    50,
+                    1,
+                    1,
+                )
+                .unwrap();
+        }
+        let mut seen = false;
+        for _ in 0..101 {
+            if scheduler
+                .pop_next()
+                .is_some_and(|value| value.id == batch_id)
+            {
+                seen = true;
+                break;
+            }
+            clock.advance(Duration::from_millis(100));
+        }
+        assert!(
+            seen,
+            "finite high-priority demand must eventually release the batch request"
+        );
     }
     proptest::proptest! { #[test] fn depth_never_exceeds_bound(n in 0usize..500) { let clock=Arc::new(VirtualClock::default()); let s=Scheduler::new(clock.clone(), SchedulerConfig { max_depth:100,..Default::default() }); let mut accepted=0; for _ in 0..n { if s.enqueue(request(&clock,"t",ServiceClass::Standard,1.0,Duration::from_secs(1)),1,1,1,1).is_ok(){accepted+=1;} } proptest::prop_assert_eq!(s.snapshot().depth,accepted.min(100)); } }
 }

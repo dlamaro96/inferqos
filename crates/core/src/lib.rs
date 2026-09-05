@@ -150,7 +150,8 @@ pub struct ProviderResponse {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: mpsc::Receiver<Result<Bytes, CoreError>>,
-    pub usage: Option<WorkEstimate>,
+    /// Updated when end-of-response usage metadata is observed. `None` means unavailable.
+    pub usage: tokio::sync::watch::Receiver<Option<WorkEstimate>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

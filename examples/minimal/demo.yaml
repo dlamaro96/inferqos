@@ -21,8 +21,14 @@ pools:
     allowed_hosts: []
     initial_safety_factor: 1.0
 policies:
-  tenants: { default: { weight: 1, guaranteed_share: 0.0, max_share: 1.0, max_concurrency: 100 } }
-  applications: {}
-  api_keys: {}
+  tenants:
+    interactive-team: { weight: 10, guaranteed_share: 0.5, max_share: 1.0, max_concurrency: 2 }
+    background-team: { weight: 1, guaranteed_share: 0.5, max_share: 1.0, max_concurrency: 2 }
+    default: { weight: 1, guaranteed_share: 0.0, max_share: 1.0, max_concurrency: 1 }
+  applications:
+    demo-interactive: { tenant: interactive-team, allowed_classes: [realtime, interactive, standard], weight: 10, max_concurrency: 2, permitted_pools: [primary] }
+    demo-background: { tenant: background-team, allowed_classes: [workflow, batch, standard], weight: 1, max_concurrency: 2, permitted_pools: [primary] }
+  api_keys:
+    INFERQOS_DEMO_INTERACTIVE_KEY: { principal: local-interactive, tenant: interactive-team, application: demo-interactive }
+    INFERQOS_DEMO_BACKGROUND_KEY: { principal: local-background, tenant: background-team, application: demo-background }
 limits: { total_queue_depth: 10000, total_queue_bytes: 268435456, decision_history: 2048, expected_replicas: 1, allow_unsafe_uncoordinated_ha: false }
-

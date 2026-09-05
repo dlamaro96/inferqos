@@ -15,6 +15,7 @@ pub struct Lease {
     pub pool: String,
     pub units: f64,
     pub expires_at: Instant,
+    pub scope: Option<String>,
 }
 
 #[async_trait]
@@ -26,12 +27,22 @@ pub trait Coordinator: Send + Sync {
         units: f64,
         ttl: Duration,
     ) -> Result<Option<Lease>, CoordinatorError>;
+    /// Atomically enforce both the pool hard limit and a caller-defined share.
+    async fn reserve_scoped(
+        &self,
+        pool: &str,
+        scope: &str,
+        pool_limit: f64,
+        scope_limit: f64,
+        units: f64,
+        ttl: Duration,
+    ) -> Result<Option<Lease>, CoordinatorError>;
     async fn release(&self, lease: &Lease) -> Result<(), CoordinatorError>;
     async fn renew(&self, lease: &Lease, ttl: Duration) -> Result<bool, CoordinatorError>;
     async fn healthy(&self) -> Result<(), CoordinatorError>;
 }
 
-type PoolLeases = HashMap<Uuid, (f64, Instant)>;
+type PoolLeases = HashMap<Uuid, (f64, Instant, Option<String>)>;
 type LeaseState = HashMap<String, PoolLeases>;
 
 #[derive(Default)]
@@ -53,8 +64,8 @@ impl Coordinator for InMemoryCoordinator {
         let now = Instant::now();
         let mut all = self.state.lock();
         let leases = all.entry(pool.into()).or_default();
-        leases.retain(|_, (_, expires)| *expires > now);
-        let used: f64 = leases.values().map(|(u, _)| u).sum();
+        leases.retain(|_, (_, expires, _)| *expires > now);
+        let used: f64 = leases.values().map(|(u, _, _)| u).sum();
         if used + units > limit {
             return Ok(None);
         }
@@ -63,8 +74,42 @@ impl Coordinator for InMemoryCoordinator {
             pool: pool.into(),
             units,
             expires_at: now + ttl,
+            scope: None,
         };
-        leases.insert(lease.id, (units, lease.expires_at));
+        leases.insert(lease.id, (units, lease.expires_at, None));
+        Ok(Some(lease))
+    }
+    async fn reserve_scoped(
+        &self,
+        pool: &str,
+        scope: &str,
+        pool_limit: f64,
+        scope_limit: f64,
+        units: f64,
+        ttl: Duration,
+    ) -> Result<Option<Lease>, CoordinatorError> {
+        validate_limits(pool_limit, scope_limit, units)?;
+        let now = Instant::now();
+        let mut all = self.state.lock();
+        let leases = all.entry(pool.into()).or_default();
+        leases.retain(|_, (_, expires, _)| *expires > now);
+        let used: f64 = leases.values().map(|(amount, _, _)| amount).sum();
+        let scope_used: f64 = leases
+            .values()
+            .filter(|(_, _, lease_scope)| lease_scope.as_deref() == Some(scope))
+            .map(|(amount, _, _)| amount)
+            .sum();
+        if used + units > pool_limit || scope_used + units > scope_limit {
+            return Ok(None);
+        }
+        let lease = Lease {
+            id: Uuid::new_v4(),
+            pool: pool.into(),
+            units,
+            expires_at: now + ttl,
+            scope: Some(scope.into()),
+        };
+        leases.insert(lease.id, (units, lease.expires_at, lease.scope.clone()));
         Ok(Some(lease))
     }
     async fn release(&self, lease: &Lease) -> Result<(), CoordinatorError> {
@@ -78,7 +123,7 @@ impl Coordinator for InMemoryCoordinator {
         let Some(pool) = state.get_mut(&lease.pool) else {
             return Ok(false);
         };
-        let Some((_, expiry)) = pool.get_mut(&lease.id) else {
+        let Some((_, expiry, _)) = pool.get_mut(&lease.id) else {
             return Ok(false);
         };
         *expiry = Instant::now() + ttl;
@@ -118,16 +163,24 @@ local limit=tonumber(ARGV[2])
 local units=tonumber(ARGV[3])
 local lease=ARGV[4]
 local expiry=tonumber(ARGV[5])
+local scope=ARGV[6]
+local scope_limit=tonumber(ARGV[7])
 local entries=redis.call('HGETALL',key)
 local used=0
+local scope_used=0
 for i=1,#entries,2 do
   local sep=string.find(entries[i+1],':')
   local amount=tonumber(string.sub(entries[i+1],1,sep-1))
-  local expires=tonumber(string.sub(entries[i+1],sep+1))
-  if expires<=now then redis.call('HDEL',key,entries[i]) else used=used+amount end
+  local sep2=string.find(entries[i+1],':',sep+1)
+  local expires=tonumber(string.sub(entries[i+1],sep+1,sep2-1))
+  local entry_scope=string.sub(entries[i+1],sep2+1)
+  if expires<=now then redis.call('HDEL',key,entries[i]) else
+    used=used+amount
+    if entry_scope==scope then scope_used=scope_used+amount end
+  end
 end
-if used+units>limit then return 0 end
-redis.call('HSET',key,lease,tostring(units)..':'..tostring(expiry))
+if used+units>limit or scope_used+units>scope_limit then return 0 end
+redis.call('HSET',key,lease,tostring(units)..':'..tostring(expiry)..':'..scope)
 redis.call('PEXPIRE',key,math.max(1000,expiry-now+1000))
 return 1
 "#;
@@ -143,6 +196,19 @@ impl Coordinator for ValkeyCoordinator {
         if !units.is_finite() || units < 0.0 {
             return Err(CoordinatorError::InvalidUnits);
         }
+        self.reserve_scoped(pool, "", limit, limit, units, ttl)
+            .await
+    }
+    async fn reserve_scoped(
+        &self,
+        pool: &str,
+        scope: &str,
+        limit: f64,
+        scope_limit: f64,
+        units: f64,
+        ttl: Duration,
+    ) -> Result<Option<Lease>, CoordinatorError> {
+        validate_limits(limit, scope_limit, units)?;
         let id = Uuid::new_v4();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -157,6 +223,8 @@ impl Coordinator for ValkeyCoordinator {
             .arg(units)
             .arg(id.to_string())
             .arg(now.saturating_add(ttl_ms))
+            .arg(scope)
+            .arg(scope_limit)
             .invoke_async(&mut conn)
             .await
             .map_err(CoordinatorError::Redis)?;
@@ -165,6 +233,7 @@ impl Coordinator for ValkeyCoordinator {
             pool: pool.into(),
             units,
             expires_at: Instant::now() + ttl,
+            scope: (!scope.is_empty()).then(|| scope.to_owned()),
         }))
     }
     async fn release(&self, lease: &Lease) -> Result<(), CoordinatorError> {
@@ -184,7 +253,7 @@ impl Coordinator for ValkeyCoordinator {
             .as_millis() as u64;
         let ttl_ms = ttl.as_millis().min(u64::MAX as u128) as u64;
         let script = redis::Script::new(
-            r#"local value=redis.call('HGET',KEYS[1],ARGV[1]); if not value then return 0 end; local sep=string.find(value,':'); local amount=string.sub(value,1,sep-1); redis.call('HSET',KEYS[1],ARGV[1],amount..':'..ARGV[2]); redis.call('PEXPIRE',KEYS[1],ARGV[3]); return 1"#,
+            r#"local value=redis.call('HGET',KEYS[1],ARGV[1]); if not value then return 0 end; local sep=string.find(value,':'); local sep2=string.find(value,':',sep+1); local amount=string.sub(value,1,sep-1); local scope=string.sub(value,sep2+1); redis.call('HSET',KEYS[1],ARGV[1],amount..':'..ARGV[2]..':'..scope); redis.call('PEXPIRE',KEYS[1],ARGV[3]); return 1"#,
         );
         let mut connection = self.manager.clone();
         let renewed: i32 = script
@@ -209,6 +278,19 @@ impl Coordinator for ValkeyCoordinator {
             Err(CoordinatorError::Unhealthy(pong))
         }
     }
+}
+
+fn validate_limits(pool_limit: f64, scope_limit: f64, units: f64) -> Result<(), CoordinatorError> {
+    if !pool_limit.is_finite()
+        || !scope_limit.is_finite()
+        || !units.is_finite()
+        || pool_limit < 0.0
+        || scope_limit < 0.0
+        || units < 0.0
+    {
+        return Err(CoordinatorError::InvalidUnits);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -268,6 +350,37 @@ mod tests {
                 .await
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_share_is_atomic_and_unused_capacity_is_borrowable() {
+        let coordinator = InMemoryCoordinator::default();
+        let borrowed = coordinator
+            .reserve_scoped("pool", "batch", 10.0, 10.0, 7.0, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert!(borrowed.is_some());
+        assert!(
+            coordinator
+                .reserve_scoped("pool", "batch", 10.0, 7.0, 1.0, Duration::from_secs(1),)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            coordinator
+                .reserve_scoped(
+                    "pool",
+                    "interactive",
+                    10.0,
+                    3.0,
+                    3.0,
+                    Duration::from_secs(1),
+                )
+                .await
+                .unwrap()
+                .is_some()
         );
     }
 }

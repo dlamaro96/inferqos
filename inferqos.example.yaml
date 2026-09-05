@@ -5,6 +5,8 @@ server:
   listen: 0.0.0.0:8080
   max_body_bytes: 16777216
   spool_threshold_bytes: 262144
+  spool_directory: /tmp/inferqos-spool
+  config_reload_interval: 2s
 admin:
   listen: 127.0.0.1:9090
   expose_decisions: false
@@ -22,6 +24,7 @@ pools:
     endpoint: ${INFERQOS_UPSTREAM}
     model: null
     deployment: null
+    region: null
     capacity_units: 50000
     auth: { type: bearer, env: INFERQOS_UPSTREAM_API_KEY }
     allowed_hosts: []
@@ -31,6 +34,15 @@ policies:
     default: { weight: 1, guaranteed_share: 0.0, max_share: 1.0, max_concurrency: 100 }
   applications: {}
   api_keys: {}
+identity:
+  oidc: null
+  trusted_proxy_cidrs: []
+  trusted_headers:
+    principal: x-inferqos-principal
+    tenant: x-inferqos-tenant
+    application: x-inferqos-application
+    client_cert_san: x-forwarded-client-cert-san
+  mtls_san_mappings: {}
 limits:
   total_queue_depth: 10000
   total_queue_bytes: 268435456

@@ -1,4 +1,4 @@
-/target/
+**/target/
 /.env
 *.pem
 *.key
@@ -14,3 +14,8 @@ coverage/
 __pycache__/
 *.py[cod]
 reports/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+fuzz/corpus/
+fuzz/artifacts/

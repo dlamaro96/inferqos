@@ -34,8 +34,10 @@ docker compose -f deploy/docker/compose.yaml up --build
 Open `http://localhost:9090/ui`, then send an OpenAI-compatible request:
 
 ```bash
+export INFERQOS_DEMO_KEY=local-demo-interactive
 curl http://localhost:8080/v1/chat/completions \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $INFERQOS_DEMO_KEY" \
   -H 'x-inferqos-class: interactive' \
   -d '{"model":"fake","messages":[{"role":"user","content":"hello"}],"stream":true}'
 ```
@@ -56,10 +58,14 @@ switch to enforcement.
 - Hierarchical weighted deficit fairness using estimated work, deadline pressure, and queue aging
 - Built-in `realtime`, `interactive`, `standard`, `workflow`, and `batch` classes
 - Azure OpenAI, AWS Bedrock, Google Vertex AI, generic OpenAI-compatible, and fake HTTP adapters
+- Ambient AWS SigV4, GCP ADC, and Azure managed/workload-identity authentication
 - Local adaptive capacity ledger and atomic lease-based Valkey coordinator
-- Strict policy/config schema, entitlement downgrade, bounded queues, decision explanations
+- OIDC, direct mTLS, trusted-proxy identity, entitlement downgrade, and constant-time API keys
+- Strict hot-reloadable config, secure bounded disk spooling, and decision explanations
+- Optional NATS JetStream and Azure Service Bus durable queues outside the interactive hot path
+- Executable streaming external-provider gRPC protocol over UDS, loopback, or TLS/mTLS
 - Shadow metrics, JSONL/CSV replay, terminal/JSON/HTML reports, and honest capacity recommendations
-- Prometheus endpoint, structured logs, health/readiness, and embedded prompt-free dashboard
+- OTLP traces/metrics, Prometheus, structured logs, health/readiness, and prompt-free dashboard
 - Docker, Helm, ACA, ECS/Fargate, Cloud Run, and systemd deployment assets
 - Lightweight Python, TypeScript, and Go header helpers
 
@@ -67,8 +73,9 @@ No database, broker, Kubernetes cluster, SDK, hosted control plane, or telemetry
 
 ## Install and deploy
 
-Download the installer before executing it; it never invokes `sudo` and verifies the published
-SHA256 manifest:
+Download the installer before executing it; it never invokes `sudo` and verifies the signed
+SHA256 manifest's Sigstore workflow identity, the artifact checksum, and (when `gh` is installed)
+the GitHub build attestation:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/dlamaro96/inferqos/main/install.sh
