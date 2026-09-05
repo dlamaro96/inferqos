@@ -1,0 +1,12 @@
+openapi: 3.1.0
+info: { title: InferQoS Management API, version: 0.1.0 }
+servers: [{ url: 'http://127.0.0.1:9090' }]
+paths:
+  /health/live: { get: { responses: { '200': { description: Process is live } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready for traffic }, '503': { description: Draining or dependency unavailable } } } }
+  /metrics: { get: { responses: { '200': { description: Prometheus text metrics } } } }
+  /api/v1/status: { get: { responses: { '200': { description: Runtime status } } } }
+  /api/v1/capacity: { get: { responses: { '200': { description: Capacity pool calibration and reservations } } } }
+  /api/v1/queues: { get: { responses: { '200': { description: Bounded queue metadata } } } }
+  /api/v1/decisions: { get: { responses: { '200': { description: Metadata-only bounded decision history } } } }
+
