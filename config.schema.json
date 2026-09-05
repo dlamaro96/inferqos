@@ -601,7 +601,7 @@
         },
         "spool_directory": {
           "type": "string",
-          "default": "/var/folders/g4/4bqz6w854pggt5v31n56x2400000gn/T/inferqos-spool"
+          "default": "/tmp/inferqos-spool"
         },
         "spool_threshold_bytes": {
           "type": "integer",

@@ -41,7 +41,7 @@ jobs:
       - run: cargo test --workspace --all-features
       - run: docker run -d --name inferqos-nats -p 4222:4222 nats:2.11-alpine -js
       - run: INFERQOS_TEST_NATS_URL=nats://127.0.0.1:4222 cargo test -p inferqos-durable-queue --test nats_jetstream
-      - run: cargo run -p inferqos-config --example schema -- /tmp/schema.json && diff -u config.schema.json /tmp/schema.json
+      - run: TMPDIR=/tmp cargo run -p inferqos-config --example schema -- /tmp/schema.json && diff -u config.schema.json /tmp/schema.json
       - name: Validate every checked-in configuration
         env:
           INFERQOS_UPSTREAM: http://127.0.0.1:18080/
