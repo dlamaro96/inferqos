@@ -34,9 +34,10 @@ docker compose -f deploy/docker/compose.yaml up --build
 Open `http://localhost:9090/ui`, then send an OpenAI-compatible request:
 
 ```bash
+export INFERQOS_DEMO_KEY=local-demo-interactive
 curl http://localhost:8080/v1/chat/completions \
   -H 'content-type: application/json' \
-  -H 'authorization: Bearer local-demo-interactive' \
+  -H "authorization: Bearer $INFERQOS_DEMO_KEY" \
   -H 'x-inferqos-class: interactive' \
   -d '{"model":"fake","messages":[{"role":"user","content":"hello"}],"stream":true}'
 ```
