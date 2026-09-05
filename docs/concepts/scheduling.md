@@ -1,3 +1,7 @@
+---
+title: "Scheduling, deadlines, and capacity"
+---
+
 # Scheduling, deadlines, and capacity
 
 Work estimates contain input, maximum output, cached input, provider coefficient, normalized work,
@@ -16,4 +20,3 @@ created by controlling new admission, not by pretending external generation can 
 Jain’s index `J=(Σxᵢ)²/(n·Σxᵢ²)` reports normalized tenant-allocation fairness. Capacity Efficiency
 under SLO is `useful admitted work meeting its class deadline / configured capacity over the same
 window`; raw utilization is reported separately.
-

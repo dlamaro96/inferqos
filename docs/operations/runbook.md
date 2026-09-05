@@ -1,3 +1,7 @@
+---
+title: "Operations and SLO guide"
+---
+
 # Operations and SLO guide
 
 Recommended internal objectives (not an OSS SLA): 99.9% data-plane availability, scheduler p95
@@ -10,4 +14,3 @@ above 0.5, sustained utilization above 90% or below 20%, abnormal rejection, and
 leases. During coordinator failure, stop autoscaling demand and restore Valkey; enforcement fails
 closed to protect capacity. Configuration belongs in Git; coordinator state is ephemeral and needs
 no backup. Preserve optional replay reports according to local data policy.
-

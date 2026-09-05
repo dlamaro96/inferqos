@@ -1,3 +1,7 @@
+---
+title: "Provider SDK and external protocol"
+---
+
 # Provider SDK and external protocol
 
 In-process Rust adapters implement `inferqos_provider_sdk::ProviderAdapter` and run
@@ -12,5 +16,5 @@ semantic changes require a new protobuf package. Plugins are privileged code: pi
 restrict filesystem/network access, and treat compromise as equivalent to provider credential loss.
 
 The runnable reference service is `cargo run -p inferqos-provider-protocol --bin example-adapter`.
-See [the external protocol reference](external-provider-protocol.md) for transport controls and an
+See [the external protocol reference](external-provider-protocol.html) for transport controls and an
 end-to-end configuration.

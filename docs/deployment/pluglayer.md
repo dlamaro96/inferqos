@@ -1,3 +1,7 @@
+---
+title: "PlugLayer"
+---
+
 # PlugLayer
 
 PlugLayer is not required by InferQoS. It is one OCI-compatible deployment option used by the

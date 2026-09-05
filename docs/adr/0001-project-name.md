@@ -1,3 +1,7 @@
+---
+title: "ADR 0001: Project name"
+---
+
 # ADR 0001: Project name
 
 - Status: Accepted
@@ -23,4 +27,3 @@ material commercial adoption or registration.
 
 All public interfaces use `InferQoS` or the lowercase `inferqos`. Vendor-prefixed protocol
 headers begin with `X-InferQoS-` until an independent specification matures.
-

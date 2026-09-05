@@ -1,3 +1,7 @@
+---
+title: "Operations dashboard"
+---
+
 # Operations dashboard
 
 The embedded dashboard is served from the management listener at `/ui`. It displays metadata only:

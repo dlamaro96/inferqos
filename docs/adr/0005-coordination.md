@@ -1,3 +1,7 @@
+---
+title: "ADR 0005: Lease-based coordination"
+---
+
 # ADR 0005: Lease-based coordination
 
 - Status: Accepted
@@ -8,4 +12,3 @@ scripts to reserve capacity and create expiring leases atomically. Release and a
 correction are idempotent. Lease expiry recovers capacity after crashes. If coordination fails,
 admission fails closed by default to protect contracted capacity; explicitly configured shadow
 mode remains observational.
-

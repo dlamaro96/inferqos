@@ -1,3 +1,7 @@
+---
+title: "Positioning"
+---
+
 # Positioning
 
 InferQoS is QoS, admission control, and capacity intelligence for finite inference. It complements
@@ -21,4 +25,3 @@ capacity now, wait, or yield to another entitled workload.
 Do not add InferQoS when traffic has only one class, capacity is effectively unlimited and cost is
 irrelevant, demand is permanently saturated, no work may queue, or equivalent identity-aware QoS
 already exists at the provider.
-

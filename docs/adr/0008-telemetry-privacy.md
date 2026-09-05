@@ -1,3 +1,7 @@
+---
+title: "ADR 0008: Metadata-only observability by default"
+---
+
 # ADR 0008: Metadata-only observability by default
 
 - Status: Accepted
@@ -5,4 +9,3 @@
 
 No project analytics or phone-home exists. Metrics and decision history exclude content and secrets.
 Explicitly configured OTLP/provider endpoints are the only outbound telemetry destinations.
-

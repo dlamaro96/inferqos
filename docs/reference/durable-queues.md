@@ -1,3 +1,7 @@
+---
+title: "Durable queue boundary"
+---
+
 # Durable queue boundary
 
 `DurableQueue` is optional and only for workflow/background/batch jobs. Realtime and interactive

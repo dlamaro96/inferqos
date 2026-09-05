@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0b0e12">
+    <title>{% if page.title %}{{ page.title }} · {% endif %}InferQoS documentation</title>
+    <meta name="description" content="{{ page.description | default: site.description | escape }}">
+    <link rel="icon" href="{{ '/assets/mark.svg' | relative_url }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ '/assets/css/docs.css' | relative_url }}">
+    <script defer src="{{ '/assets/js/docs.js' | relative_url }}"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <div class="reading-progress" aria-hidden="true"><i></i></div>
+    <header class="docs-header">
+      <a class="docs-brand" href="{{ '/' | relative_url }}" aria-label="InferQoS documentation home">
+        <img src="{{ '/assets/mark.svg' | relative_url }}" alt="">
+        <strong>InferQoS</strong><span>DOCS</span>
+      </a>
+      <nav aria-label="Documentation utilities">
+        <a href="https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/">Live demo</a>
+        <a href="https://github.com/dlamaro96/inferqos">GitHub</a>
+        <button class="theme-toggle" type="button" aria-label="Toggle color theme"><span>Theme</span><i></i></button>
+        <button class="sidebar-toggle" type="button" aria-label="Open documentation navigation" aria-expanded="false"><i></i><i></i></button>
+      </nav>
+    </header>
+
+    <div class="docs-grid">
+      <aside class="docs-sidebar">
+        <label class="docs-search"><span>Search navigation</span><input type="search" placeholder="Find a topic" autocomplete="off"><kbd>/</kbd></label>
+        <nav aria-label="Documentation">
+          <div class="nav-group"><strong>Start</strong><a href="{{ '/' | relative_url }}">Documentation home</a><a href="https://github.com/dlamaro96/inferqos#run-the-live-demo">Five-minute demo</a><a href="{{ '/providers.html' | relative_url }}">Provider setup</a></div>
+          <div class="nav-group"><strong>Understand</strong><a href="{{ '/architecture/overview.html' | relative_url }}">Architecture</a><a href="{{ '/concepts/scheduling.html' | relative_url }}">Scheduling and deadlines</a><a href="{{ '/product/positioning.html' | relative_url }}">Product boundary</a><a href="{{ '/product/non-goals.html' | relative_url }}">When not to use it</a></div>
+          <div class="nav-group"><strong>Deploy</strong><a href="{{ '/deployment/' | relative_url }}">Deployment guide</a><a href="{{ '/deployment/pluglayer.html' | relative_url }}">PlugLayer</a><a href="{{ '/integrations/gateways.html' | relative_url }}">Gateway integrations</a></div>
+          <div class="nav-group"><strong>Operate</strong><a href="{{ '/operations/dashboard.html' | relative_url }}">Dashboard</a><a href="{{ '/operations/telemetry.html' | relative_url }}">Telemetry</a><a href="{{ '/operations/runbook.html' | relative_url }}">Runbook and SLOs</a><a href="{{ '/operations/spooling-and-reload.html' | relative_url }}">Spooling and reload</a></div>
+          <div class="nav-group"><strong>Secure</strong><a href="{{ '/security/threat-model.html' | relative_url }}">Threat model</a><a href="{{ '/security/identity.html' | relative_url }}">Identity</a><a href="{{ '/security/telemetry.html' | relative_url }}">Privacy</a></div>
+          <div class="nav-group"><strong>Reference</strong><a href="{{ '/reference/qos-protocol.html' | relative_url }}">QoS protocol</a><a href="{{ '/reference/durable-queues.html' | relative_url }}">Durable queues</a><a href="{{ '/reference/provider-sdk.html' | relative_url }}">Provider SDK</a><a href="{{ '/reference/external-provider-protocol.html' | relative_url }}">External adapters</a></div>
+        </nav>
+        <footer><span>No analytics</span><span>Apache-2.0</span></footer>
+      </aside>
+
+      <main id="content" class="docs-content{% if page.url == '/' %} docs-content--home{% endif %}">
+        <div class="docs-breadcrumb"><a href="{{ '/' | relative_url }}">Docs</a><span>/</span><b>{{ page.title | default: 'Overview' }}</b></div>
+        <article>{{ content }}</article>
+        <footer class="page-footer"><a href="https://github.com/dlamaro96/inferqos/edit/main/docs/{{ page.path | remove_first: 'docs/' }}">Edit this page</a><a href="https://github.com/dlamaro96/inferqos/issues/new?template=documentation.yml">Report a docs issue</a></footer>
+      </main>
+
+      <aside class="docs-toc" aria-label="On this page"><strong>On this page</strong><nav></nav><a href="#content">Back to top</a></aside>
+    </div>
+  </body>
+</html>

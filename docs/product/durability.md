@@ -1,3 +1,7 @@
+---
+title: "Product durability"
+---
+
 # Product durability
 
 Individual queueing and rate-limit features will be commoditized. The durable project compounds:
@@ -9,4 +13,3 @@ capacity models + provider abstraction + QoS protocol + scheduler quality
 
 The core therefore uses normalized `WorkUnits`/`CapacityUnit`, treats vendor metrics as background
 calibration rather than hot-path truth, and never assumes capacity means Azure PTUs.
-

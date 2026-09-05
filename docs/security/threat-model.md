@@ -1,3 +1,7 @@
+---
+title: "Threat model"
+---
+
 # Threat model
 
 | Threat | Control |
@@ -16,4 +20,3 @@
 Deploy with least-privilege identities, egress policy, rustls TLS, non-root/read-only containers,
 network policies, coordinator TLS/ACLs, and a private admin route. InferQoS cannot protect a host or
 configuration source already controlled by an attacker.
-

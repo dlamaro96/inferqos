@@ -1,3 +1,7 @@
+---
+title: "ADR 0012: Separate product, operations, and simulation surfaces"
+---
+
 # ADR 0012: Separate product, operations, and simulation surfaces
 
 ## Status

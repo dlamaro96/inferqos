@@ -1,3 +1,7 @@
+---
+title: "Differentiation"
+---
+
 # Differentiation
 
 | Category | Primary question | Relationship to InferQoS |
@@ -10,4 +14,3 @@
 | Kubernetes inference routing | Which service replica receives a request? | Orthogonal to business-aware admission. |
 
 These are category comparisons, not claims that every product in a category behaves identically.
-

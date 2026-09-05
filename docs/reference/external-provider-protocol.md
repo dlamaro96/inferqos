@@ -1,3 +1,7 @@
+---
+title: "External provider adapter protocol"
+---
+
 # External provider adapter protocol
 
 `protocol/provider/v1/provider.proto` is executable, not an interface sketch. Run the included

@@ -1,3 +1,7 @@
+---
+title: "Existing gateway integrations"
+---
+
 # Existing gateway integrations
 
 ## APIM
@@ -13,4 +17,3 @@ Route OpenAI-compatible paths to InferQoS, preserve streaming/timeouts and traci
 QoS identity headers, and add trusted identity metadata after gateway authentication. Keep retries
 disabled after response bytes begin. InferQoS forwards to a static configured pool; it is not a
 semantic router.
-

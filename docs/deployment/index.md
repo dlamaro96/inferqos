@@ -1,3 +1,7 @@
+---
+title: "Deployment"
+---
+
 # Deployment
 
 `inferqos deploy --target docker|aca|kubernetes|ecs|cloud-run|systemd` validates the required CLI,
@@ -44,5 +48,5 @@ Validate new configuration before deployment. Roll back the image tag and prior 
 ephemeral reservations recover through lease expiry.
 
 For the project website and an isolated OCI validation example, see the
-[PlugLayer deployment boundary](pluglayer.md). PlugLayer is optional and is not a runtime
+[PlugLayer deployment boundary](pluglayer.html). PlugLayer is optional and is not a runtime
 dependency of InferQoS.

@@ -1,3 +1,7 @@
+---
+title: "Identity and entitlement boundary"
+---
+
 # Identity and entitlement boundary
 
 InferQoS calculates the effective service class only after identity resolution. A raw

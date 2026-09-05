@@ -1,3 +1,7 @@
+---
+title: "ADR 0007: Strict configuration as code"
+---
+
 # ADR 0007: Strict configuration as code
 
 - Status: Accepted
@@ -5,4 +9,3 @@
 
 YAML uses `inferqos.io/v1alpha1`, rejects unknown fields, expands named environment variables, and
 performs semantic validation before runtime replacement. Failed reloads never replace known-good state.
-

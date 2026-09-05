@@ -1,3 +1,7 @@
+---
+title: "Architecture"
+---
+
 # Architecture
 
 ```text
@@ -24,4 +28,3 @@ Valkey holds ephemeral leases, not payloads. Observability exports metadata only
 Single-replica mode keeps scheduler, bounded request metadata, and capacity reservations in memory.
 HA replicas use atomic expiring leases; coordinator failure is fail-closed in enforcement mode.
 Running requests drain during shutdown and streaming remains unbuffered after upstream dispatch.
-

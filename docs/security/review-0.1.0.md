@@ -1,3 +1,7 @@
+---
+title: "Security best-practices review — 0.1.0"
+---
+
 # Security best-practices review — 0.1.0
 
 ## Executive summary

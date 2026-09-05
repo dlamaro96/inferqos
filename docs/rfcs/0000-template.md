@@ -1,3 +1,7 @@
+---
+title: "RFC: title"
+---
+
 # RFC: title
 
 - Status: Draft
@@ -9,4 +13,3 @@
 ## Security and privacy
 ## Compatibility and rollout
 ## Alternatives
-
