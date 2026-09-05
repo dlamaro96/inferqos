@@ -9,7 +9,8 @@ Keep these workloads separate:
 - an ephemeral runtime validation project containing InferQoS and the deterministic fake provider;
 - any production InferQoS deployment connected to real capacity.
 
-The checked-in `web/site/Dockerfile` builds the public site. The disposable
+The public website and browser simulator are maintained and deployed from a
+separate private-source repository. The disposable
 `deploy/pluglayer/Dockerfile.runtime-test` embeds the zero-key demo configuration for validation
 only. It is not the production image and must not be pointed at a real provider.
 
@@ -18,3 +19,4 @@ restrict the management listener to internal networks, configure bearer authenti
 access is required, and use Valkey when more than one replica admits against the same pool.
 
 The public site sends no analytics. Its simulation runs entirely in the visitor's browser.
+Its source and release lifecycle are deliberately independent from the Apache-2.0 data plane.

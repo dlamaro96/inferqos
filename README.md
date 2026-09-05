@@ -70,7 +70,7 @@ switch to enforcement.
 - Executable streaming external-provider gRPC protocol over UDS, loopback, or TLS/mTLS
 - Shadow metrics, JSONL/CSV replay, terminal/JSON/HTML reports, and honest capacity recommendations
 - OTLP traces/metrics, Prometheus, structured logs, health/readiness, and prompt-free dashboard
-- Enterprise operations UI plus a separate public site and deterministic browser-based QoS simulator
+- Enterprise operations UI plus links to a separately maintained browser-based QoS simulator
 - Docker, Helm, ACA, ECS/Fargate, Cloud Run, and systemd deployment assets
 - Lightweight Python, TypeScript, and Go header helpers
 

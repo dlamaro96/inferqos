@@ -2199,14 +2199,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inferqos-site"
-version = "0.2.0"
-dependencies = [
- "axum",
- "tokio",
-]
-
-[[package]]
 name = "inferqos-telemetry"
 version = "0.2.0"
 dependencies = [
