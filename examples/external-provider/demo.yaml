@@ -1,0 +1,31 @@
+apiVersion: inferqos.io/v1alpha1
+kind: InferQoSConfig
+mode: enforce
+server: { listen: "127.0.0.1:8180", max_body_bytes: 1048576, spool_threshold_bytes: 262144 }
+admin: { listen: "127.0.0.1:9190", expose_decisions: true }
+coordinator: { type: memory }
+service_classes:
+  realtime: { weight: 100, default_deadline: 500ms, max_queue: 100ms, max_queued: 100 }
+  interactive: { weight: 50, default_deadline: 3s, max_queue: 3s, max_queued: 1000 }
+  standard: { weight: 20, default_deadline: 10s, max_queue: 10s, max_queued: 3000 }
+  workflow: { weight: 10, default_deadline: 30s, max_queue: 60s, max_queued: 3000 }
+  batch: { weight: 1, default_deadline: 30m, max_queue: 30m, max_queued: 3000 }
+pools:
+  external:
+    provider: external-grpc
+    endpoint: https://unused.invalid/
+    model: null
+    deployment: null
+    region: null
+    external_adapter: { transport: loopback, uri: "http://127.0.0.1:50051" }
+    capacity_units: 1024
+    auth: { type: none }
+    allowed_hosts: []
+    initial_safety_factor: 1.0
+policies:
+  tenants:
+    default: { weight: 1, guaranteed_share: 0.0, max_share: 1.0, max_concurrency: 4 }
+  applications: {}
+  api_keys: {}
+identity: {}
+limits: { total_queue_depth: 1000, total_queue_bytes: 16777216, decision_history: 256, expected_replicas: 1, allow_unsafe_uncoordinated_ha: false }

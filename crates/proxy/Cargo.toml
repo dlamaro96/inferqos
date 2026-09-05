@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+cloud-auth = ["inferqos-providers/cloud-auth"]
+
 [dependencies]
 axum.workspace = true
 bytes.workspace = true
@@ -13,12 +17,16 @@ inferqos-capacity.workspace = true
 inferqos-config.workspace = true
 inferqos-coordinator.workspace = true
 inferqos-core.workspace = true
+inferqos-identity.workspace = true
+inferqos-provider-protocol.workspace = true
 inferqos-providers.workspace = true
 inferqos-scheduler.workspace = true
+inferqos-telemetry.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 subtle.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing.workspace = true

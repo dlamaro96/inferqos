@@ -29,7 +29,67 @@ pub struct Config {
     #[serde(default)]
     pub policies: Policies,
     #[serde(default)]
+    pub identity: IdentityConfig,
+    #[serde(default)]
     pub limits: Limits,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IdentityConfig {
+    #[serde(default)]
+    pub oidc: Option<OidcConfig>,
+    #[serde(default)]
+    pub trusted_proxy_cidrs: Vec<String>,
+    #[serde(default)]
+    pub trusted_headers: TrustedIdentityHeaders,
+    #[serde(default)]
+    pub mtls_san_mappings: BTreeMap<String, IdentityMapping>,
+    /// Lowercase, colon-free SHA-256 fingerprints of directly verified client
+    /// certificates. Fingerprints avoid trusting mutable certificate subjects.
+    #[serde(default)]
+    pub mtls_certificate_sha256_mappings: BTreeMap<String, IdentityMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OidcConfig {
+    pub issuer: String,
+    pub audience: String,
+    #[serde(default)]
+    pub jwks_url: Option<String>,
+    #[serde(default = "default_subject_claim")]
+    pub principal_claim: String,
+    #[serde(default = "default_tenant_claim")]
+    pub tenant_claim: String,
+    #[serde(default = "default_application_claim")]
+    pub application_claim: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TrustedIdentityHeaders {
+    #[serde(default = "default_principal_header")]
+    pub principal: String,
+    #[serde(default = "default_tenant_header")]
+    pub tenant: String,
+    #[serde(default = "default_application_header")]
+    pub application: String,
+    #[serde(default = "default_client_san_header")]
+    pub client_cert_san: String,
+}
+
+impl Default for TrustedIdentityHeaders {
+    fn default() -> Self {
+        Self {
+            principal: default_principal_header(),
+            tenant: default_tenant_header(),
+            application: default_application_header(),
+            client_cert_san: default_client_san_header(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -44,10 +104,28 @@ pub enum Mode {
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
     pub listen: SocketAddr,
+    /// Direct data-plane TLS. When configured, client certificates are required
+    /// and verified against `client_ca_file` before SAN-to-identity mapping.
+    #[serde(default)]
+    pub tls: Option<ServerTlsConfig>,
     #[serde(default = "default_body_bytes")]
     pub max_body_bytes: usize,
     #[serde(default = "default_spool_threshold")]
     pub spool_threshold_bytes: usize,
+    #[serde(default = "default_spool_directory")]
+    pub spool_directory: std::path::PathBuf,
+    #[serde(default = "default_reload_interval")]
+    #[serde(with = "humantime_serde")]
+    #[schemars(with = "String")]
+    pub config_reload_interval: Duration,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ServerTlsConfig {
+    pub cert_file: std::path::PathBuf,
+    pub key_file: std::path::PathBuf,
+    pub client_ca_file: std::path::PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -93,6 +171,10 @@ pub struct PoolConfig {
     pub endpoint: String,
     pub model: Option<String>,
     pub deployment: Option<String>,
+    #[serde(default)]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub external_adapter: Option<ExternalAdapterConfig>,
     pub capacity_units: f64,
     #[serde(default)]
     pub auth: AuthConfig,
@@ -110,6 +192,27 @@ pub enum ProviderKind {
     GcpVertex,
     OpenaiCompatible,
     Fake,
+    ExternalGrpc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "transport", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ExternalAdapterConfig {
+    Unix {
+        path: std::path::PathBuf,
+    },
+    Loopback {
+        uri: String,
+    },
+    Tls {
+        uri: String,
+        domain: String,
+        ca_file: std::path::PathBuf,
+        #[serde(default)]
+        client_cert_file: Option<std::path::PathBuf>,
+        #[serde(default)]
+        client_key_file: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -232,6 +335,19 @@ impl Config {
                     .into(),
             ));
         }
+        if let Some(tls) = &self.server.tls {
+            for (label, path) in [
+                ("server TLS certificate", &tls.cert_file),
+                ("server TLS private key", &tls.key_file),
+                ("mTLS client CA", &tls.client_ca_file),
+            ] {
+                if path.as_os_str().is_empty() {
+                    return Err(ConfigError::Semantic(format!(
+                        "{label} path cannot be empty"
+                    )));
+                }
+            }
+        }
         for required in [
             ServiceClass::Realtime,
             ServiceClass::Interactive,
@@ -288,6 +404,55 @@ impl Config {
                 }
             }
         }
+        for (name, pool) in &self.pools {
+            if matches!(pool.provider, ProviderKind::ExternalGrpc)
+                != pool.external_adapter.is_some()
+            {
+                return Err(ConfigError::Semantic(format!(
+                    "pool {name} must configure external_adapter exactly when provider is external-grpc"
+                )));
+            }
+            if let Some(ExternalAdapterConfig::Tls {
+                client_cert_file,
+                client_key_file,
+                ..
+            }) = &pool.external_adapter
+                && client_cert_file.is_some() != client_key_file.is_some()
+            {
+                return Err(ConfigError::Semantic(format!(
+                    "pool {name} external adapter mTLS requires both client_cert_file and client_key_file"
+                )));
+            }
+        }
+        for cidr in &self.identity.trusted_proxy_cidrs {
+            cidr.parse::<ipnet::IpNet>().map_err(|error| {
+                ConfigError::Semantic(format!("trusted proxy CIDR {cidr:?} is invalid: {error}"))
+            })?;
+        }
+        for fingerprint in self.identity.mtls_certificate_sha256_mappings.keys() {
+            if fingerprint.len() != 64
+                || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit())
+            {
+                return Err(ConfigError::Semantic(format!(
+                    "mTLS certificate fingerprint {fingerprint:?} must contain exactly 64 hexadecimal characters"
+                )));
+            }
+        }
+        if let Some(oidc) = &self.identity.oidc {
+            let issuer = url::Url::parse(&oidc.issuer).map_err(|error| {
+                ConfigError::Semantic(format!("OIDC issuer is invalid: {error}"))
+            })?;
+            if issuer.scheme() != "https" && issuer.host_str() != Some("localhost") {
+                return Err(ConfigError::Semantic(
+                    "OIDC issuer must use HTTPS except for localhost tests".into(),
+                ));
+            }
+            if oidc.audience.is_empty() {
+                return Err(ConfigError::Semantic(
+                    "OIDC audience cannot be empty".into(),
+                ));
+            }
+        }
         if self.limits.expected_replicas > 1
             && matches!(self.coordinator, CoordinatorConfig::Memory)
             && !self.limits.allow_unsafe_uncoordinated_ha
@@ -342,6 +507,12 @@ fn default_body_bytes() -> usize {
 fn default_spool_threshold() -> usize {
     256 * 1024
 }
+fn default_spool_directory() -> std::path::PathBuf {
+    std::env::temp_dir().join("inferqos-spool")
+}
+fn default_reload_interval() -> Duration {
+    Duration::from_secs(2)
+}
 fn default_safety() -> f64 {
     1.15
 }
@@ -359,6 +530,27 @@ fn default_decisions() -> usize {
 }
 fn default_replicas() -> usize {
     1
+}
+fn default_subject_claim() -> String {
+    "sub".into()
+}
+fn default_tenant_claim() -> String {
+    "tenant".into()
+}
+fn default_application_claim() -> String {
+    "application".into()
+}
+fn default_principal_header() -> String {
+    "x-inferqos-principal".into()
+}
+fn default_tenant_header() -> String {
+    "x-inferqos-tenant".into()
+}
+fn default_application_header() -> String {
+    "x-inferqos-application".into()
+}
+fn default_client_san_header() -> String {
+    "x-forwarded-client-cert-san".into()
 }
 
 #[derive(Debug, Error)]

@@ -15,6 +15,21 @@
         "type": "memory"
       }
     },
+    "identity": {
+      "$ref": "#/$defs/IdentityConfig",
+      "default": {
+        "mtls_certificate_sha256_mappings": {},
+        "mtls_san_mappings": {},
+        "oidc": null,
+        "trusted_headers": {
+          "application": "x-inferqos-application",
+          "client_cert_san": "x-forwarded-client-cert-san",
+          "principal": "x-inferqos-principal",
+          "tenant": "x-inferqos-tenant"
+        },
+        "trusted_proxy_cidrs": []
+      }
+    },
     "kind": {
       "type": "string"
     },
@@ -235,6 +250,131 @@
         }
       ]
     },
+    "ExternalAdapterConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "transport": {
+              "type": "string",
+              "const": "unix"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "transport",
+            "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "transport": {
+              "type": "string",
+              "const": "loopback"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "transport",
+            "uri"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ca_file": {
+              "type": "string"
+            },
+            "client_cert_file": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "client_key_file": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "domain": {
+              "type": "string"
+            },
+            "transport": {
+              "type": "string",
+              "const": "tls"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "transport",
+            "uri",
+            "domain",
+            "ca_file"
+          ]
+        }
+      ]
+    },
+    "IdentityConfig": {
+      "type": "object",
+      "properties": {
+        "mtls_certificate_sha256_mappings": {
+          "description": "Lowercase, colon-free SHA-256 fingerprints of directly verified client\ncertificates. Fingerprints avoid trusting mutable certificate subjects.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/IdentityMapping"
+          },
+          "default": {}
+        },
+        "mtls_san_mappings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/IdentityMapping"
+          },
+          "default": {}
+        },
+        "oidc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OidcConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "trusted_headers": {
+          "$ref": "#/$defs/TrustedIdentityHeaders",
+          "default": {
+            "application": "x-inferqos-application",
+            "client_cert_san": "x-forwarded-client-cert-san",
+            "principal": "x-inferqos-principal",
+            "tenant": "x-inferqos-tenant"
+          }
+        },
+        "trusted_proxy_cidrs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "IdentityMapping": {
       "type": "object",
       "properties": {
@@ -296,6 +436,45 @@
         "enforce"
       ]
     },
+    "OidcConfig": {
+      "type": "object",
+      "properties": {
+        "application_claim": {
+          "type": "string",
+          "default": "application"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "jwks_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "principal_claim": {
+          "type": "string",
+          "default": "sub"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "tenant_claim": {
+          "type": "string",
+          "default": "tenant"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "issuer",
+        "audience"
+      ]
+    },
     "Policies": {
       "type": "object",
       "properties": {
@@ -353,6 +532,17 @@
         "endpoint": {
           "type": "string"
         },
+        "external_adapter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExternalAdapterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "initial_safety_factor": {
           "type": "number",
           "format": "double",
@@ -366,6 +556,13 @@
         },
         "provider": {
           "$ref": "#/$defs/ProviderKind"
+        },
+        "region": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         }
       },
       "additionalProperties": false,
@@ -382,12 +579,17 @@
         "aws-bedrock",
         "gcp-vertex",
         "openai-compatible",
-        "fake"
+        "fake",
+        "external-grpc"
       ]
     },
     "ServerConfig": {
       "type": "object",
       "properties": {
+        "config_reload_interval": {
+          "type": "string",
+          "default": "2s"
+        },
         "listen": {
           "type": "string"
         },
@@ -397,16 +599,52 @@
           "default": 16777216,
           "minimum": 0
         },
+        "spool_directory": {
+          "type": "string",
+          "default": "/var/folders/g4/4bqz6w854pggt5v31n56x2400000gn/T/inferqos-spool"
+        },
         "spool_threshold_bytes": {
           "type": "integer",
           "format": "uint",
           "default": 262144,
           "minimum": 0
+        },
+        "tls": {
+          "description": "Direct data-plane TLS. When configured, client certificates are required\nand verified against `client_ca_file` before SAN-to-identity mapping.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServerTlsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "additionalProperties": false,
       "required": [
         "listen"
+      ]
+    },
+    "ServerTlsConfig": {
+      "type": "object",
+      "properties": {
+        "cert_file": {
+          "type": "string"
+        },
+        "client_ca_file": {
+          "type": "string"
+        },
+        "key_file": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cert_file",
+        "key_file",
+        "client_ca_file"
       ]
     },
     "ServiceClassConfig": {
@@ -461,6 +699,28 @@
           "format": "uint32",
           "default": 1,
           "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrustedIdentityHeaders": {
+      "type": "object",
+      "properties": {
+        "application": {
+          "type": "string",
+          "default": "x-inferqos-application"
+        },
+        "client_cert_san": {
+          "type": "string",
+          "default": "x-forwarded-client-cert-san"
+        },
+        "principal": {
+          "type": "string",
+          "default": "x-inferqos-principal"
+        },
+        "tenant": {
+          "type": "string",
+          "default": "x-inferqos-tenant"
         }
       },
       "additionalProperties": false

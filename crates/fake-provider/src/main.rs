@@ -30,6 +30,9 @@ struct Args {
     latency_ms: u64,
     #[arg(long, default_value_t = 12)]
     chunks: u64,
+    /// Deterministically fail every Nth request with 503; zero disables it.
+    #[arg(long, default_value_t = 0)]
+    failure_every: u64,
 }
 #[derive(Clone)]
 struct App {
@@ -38,6 +41,7 @@ struct App {
     chunks: u64,
     requests: Arc<AtomicU64>,
     throttles: Arc<AtomicU64>,
+    failure_every: u64,
 }
 #[tokio::main]
 async fn main() {
@@ -48,6 +52,7 @@ async fn main() {
         chunks: a.chunks,
         requests: Arc::new(AtomicU64::new(0)),
         throttles: Arc::new(AtomicU64::new(0)),
+        failure_every: a.failure_every,
     };
     println!(
         "fake finite provider listening on http://{} with concurrency {}",
@@ -68,7 +73,29 @@ async fn main() {
     .expect("fake provider server failed")
 }
 async fn infer(State(app): State<App>, request: Request) -> Response {
-    app.requests.fetch_add(1, Ordering::Relaxed);
+    let sequence = app.requests.fetch_add(1, Ordering::Relaxed) + 1;
+    let mode = request
+        .headers()
+        .get("x-fake-mode")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    if mode == "throttle" {
+        app.throttles.fetch_add(1, Ordering::Relaxed);
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, "1")],
+            axum::Json(serde_json::json!({"error":{"type":"capacity_exhausted","message":"forced deterministic throttle"}})),
+        )
+            .into_response();
+    }
+    if app.failure_every > 0 && sequence.is_multiple_of(app.failure_every) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "deterministic injected failure",
+        )
+            .into_response();
+    }
     let Ok(permit) = app.semaphore.clone().try_acquire_owned() else {
         app.throttles.fetch_add(1, Ordering::Relaxed);
         return (StatusCode::TOO_MANY_REQUESTS,[(header::RETRY_AFTER,"1")],axum::Json(serde_json::json!({"error":{"type":"capacity_exhausted","message":"deterministic fake provider is saturated"}}))).into_response();
@@ -81,12 +108,35 @@ async fn infer(State(app): State<App>, request: Request) -> Response {
         .ok()
         .and_then(|v| v.get("stream").and_then(|v| v.as_bool()))
         .unwrap_or(false);
+    if mode == "disconnect" {
+        let output = stream::iter([
+            Ok::<Bytes, std::io::Error>(Bytes::from_static(b"partial")),
+            Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "injected provider disconnect",
+            )),
+        ]);
+        return Response::new(Body::from_stream(output));
+    }
+    let latency = if mode == "slow" {
+        app.latency.saturating_mul(20)
+    } else {
+        app.latency
+    };
+    if mode == "malformed" {
+        tokio::time::sleep(latency).await;
+        return (
+            [(header::CONTENT_TYPE, "application/json")],
+            "{this-is-not-json",
+        )
+            .into_response();
+    }
     if !streaming {
-        tokio::time::sleep(app.latency).await;
+        tokio::time::sleep(latency).await;
         drop(permit);
         return axum::Json(serde_json::json!({"id":"fake-response","object":"chat.completion","choices":[{"message":{"role":"assistant","content":"finite capacity response"}}],"usage":{"prompt_tokens":16,"completion_tokens":8,"total_tokens":24}})).into_response();
     }
-    let delay = app.latency;
+    let delay = latency;
     let chunks = app.chunks;
     let output = stream::unfold((0, Some(permit)), move |(i, permit)| async move {
         if i >= chunks {

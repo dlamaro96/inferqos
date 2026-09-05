@@ -3,26 +3,30 @@
 use axum::{
     Router,
     body::Body,
-    extract::{Request, State},
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
+    extract::{ConnectInfo, Request, State},
+    http::{HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get},
 };
 use futures_util::stream;
 use inferqos_capacity::CapacityModel;
-use inferqos_config::{ApplicationPolicy, Config, Mode};
+use inferqos_config::{ApplicationPolicy, Config, ExternalAdapterConfig, Mode, ProviderKind};
 use inferqos_coordinator::{Coordinator, InMemoryCoordinator, Lease, ValkeyCoordinator};
 use inferqos_core::{
     AdmissionRequest, CoreError, HEADER_CLASS, HEADER_DEADLINE_MS, HEADER_QUEUEABLE,
-    HEADER_REQUEST_ID, IdentityContext, ProviderAdapter, ProxyRequest, ServiceClass,
+    HEADER_REQUEST_ID, IdentityContext, ProviderAdapter, ProxyRequest, ServiceClass, WorkEstimate,
 };
+use inferqos_identity::{IdentityResolver, VerifiedClientCertificate};
 use inferqos_providers::HttpProvider;
 use inferqos_scheduler::{Scheduler, SchedulerConfig, SystemClock};
+use inferqos_telemetry::RuntimeMetrics;
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
+    net::SocketAddr,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -30,6 +34,7 @@ use std::{
     time::{Duration, Instant},
 };
 use subtle::ConstantTimeEq;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 
@@ -41,13 +46,85 @@ struct PoolRuntime {
     limit: f64,
 }
 struct Pending {
-    sender: oneshot::Sender<Lease>,
+    sender: oneshot::Sender<AdmissionLeases>,
     request: AdmissionRequest,
     body_bytes: usize,
     class_weight: u32,
     tenant_weight: u32,
     app_weight: u32,
     queued_at: Instant,
+}
+#[derive(Debug)]
+struct AdmissionLeases {
+    capacity: Lease,
+    tenant_slot: Lease,
+    application_slot: Lease,
+}
+
+/// Owns every claim created by admission. If the request future is cancelled
+/// before response streaming takes ownership, Drop releases local bookkeeping
+/// immediately and schedules coordinator settlement. Lease expiry remains the
+/// final crash-recovery mechanism.
+struct ActiveAdmissionGuard {
+    state: AppState,
+    capacity: Arc<CapacityModel>,
+    leases: Option<AdmissionLeases>,
+    identity: IdentityContext,
+    estimate: WorkEstimate,
+    effective_class: String,
+    concurrency_entered: bool,
+    counted_active: bool,
+}
+
+impl ActiveAdmissionGuard {
+    async fn complete(mut self, actual: Option<WorkEstimate>, throttled: bool) {
+        if let Some(leases) = self.leases.take() {
+            self.state.release_distributed(&leases).await;
+            let actual_units = actual.as_ref().map(|value| value.normalized_units);
+            self.capacity.release(
+                leases.capacity.id,
+                self.estimate.normalized_units,
+                actual_units,
+                throttled,
+            );
+            if let Some(actual) = actual {
+                self.state.0.otel.reconciliation(
+                    self.estimate.normalized_units.0,
+                    actual.normalized_units.0,
+                    &self.effective_class,
+                );
+            }
+        }
+        self.release_local();
+    }
+
+    fn release_local(&mut self) {
+        if self.concurrency_entered {
+            self.state.leave(&self.identity);
+            self.concurrency_entered = false;
+        }
+        if self.counted_active {
+            self.state.0.metrics.active.fetch_sub(1, Ordering::Relaxed);
+            self.state.0.otel.active(-1, &self.effective_class);
+            self.counted_active = false;
+        }
+    }
+}
+
+impl Drop for ActiveAdmissionGuard {
+    fn drop(&mut self) {
+        if let Some(leases) = self.leases.take() {
+            self.capacity.release(
+                leases.capacity.id,
+                self.estimate.normalized_units,
+                None,
+                false,
+            );
+            let state = self.state.clone();
+            tokio::spawn(async move { state.release_distributed(&leases).await });
+        }
+        self.release_local();
+    }
 }
 struct Inner {
     config: Arc<RwLock<Config>>,
@@ -59,6 +136,82 @@ struct Inner {
     metrics: Metrics,
     coordinator: Arc<dyn Coordinator>,
     lease_ttl: Duration,
+    identity: IdentityResolver,
+    concurrency: Mutex<ConcurrencyState>,
+    otel: RuntimeMetrics,
+}
+
+#[derive(Default)]
+struct ConcurrencyState {
+    tenants: HashMap<String, usize>,
+    applications: HashMap<String, usize>,
+}
+
+enum StoredBody {
+    Memory(bytes::Bytes),
+    Spool {
+        path: tempfile::TempPath,
+        len: usize,
+    },
+}
+
+impl StoredBody {
+    async fn store(
+        body: bytes::Bytes,
+        threshold: usize,
+        directory: &Path,
+    ) -> Result<Self, std::io::Error> {
+        if body.len() <= threshold {
+            return Ok(Self::Memory(body));
+        }
+        prepare_spool_directory(directory).await?;
+        let file = tempfile::Builder::new()
+            .prefix("inferqos-")
+            .suffix(".body")
+            .tempfile_in(directory)?;
+        let (file, path) = file.into_parts();
+        let mut file = tokio::fs::File::from_std(file);
+        file.write_all(&body).await?;
+        file.flush().await?;
+        drop(file);
+        Ok(Self::Spool {
+            path,
+            len: body.len(),
+        })
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Memory(body) => body.len(),
+            Self::Spool { len, .. } => *len,
+        }
+    }
+
+    async fn load(&self) -> Result<bytes::Bytes, std::io::Error> {
+        match self {
+            Self::Memory(body) => Ok(body.clone()),
+            Self::Spool { path, len } => {
+                let body = tokio::fs::read(path).await?;
+                if body.len() != *len {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "spooled body length changed",
+                    ));
+                }
+                Ok(body.into())
+            }
+        }
+    }
+}
+
+async fn prepare_spool_directory(directory: &Path) -> Result<(), std::io::Error> {
+    tokio::fs::create_dir_all(directory).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).await?;
+    }
+    Ok(())
 }
 #[derive(Default)]
 struct Metrics {
@@ -84,6 +237,11 @@ pub struct DecisionRecord {
 
 impl AppState {
     pub async fn build(config: Config) -> Result<Self, CoreError> {
+        let identity = IdentityResolver::new(config.clone())
+            .await
+            .map_err(|error| {
+                CoreError::Provider(format!("identity initialization failed: {error}"))
+            })?;
         let (coordinator, lease_ttl): (Arc<dyn Coordinator>, Duration) = match &config.coordinator {
             inferqos_config::CoordinatorConfig::Memory => (
                 Arc::new(InMemoryCoordinator::default()),
@@ -95,7 +253,7 @@ impl AppState {
                         "coordinator environment variable {url_env} is not set"
                     ))
                 })?;
-                let value = ValkeyCoordinator::connect(&url, "inferqos:v1")
+                let value = ValkeyCoordinator::connect(&url, "inferqos:v2")
                     .await
                     .map_err(|error| CoreError::Provider(error.to_string()))?;
                 value
@@ -107,7 +265,42 @@ impl AppState {
         };
         let mut pools = HashMap::new();
         for (name, pool) in &config.pools {
-            let provider = Arc::new(HttpProvider::from_config(pool)?) as Arc<dyn ProviderAdapter>;
+            let provider: Arc<dyn ProviderAdapter> =
+                if matches!(pool.provider, ProviderKind::ExternalGrpc) {
+                    let endpoint = match pool
+                        .external_adapter
+                        .as_ref()
+                        .expect("validated external adapter")
+                    {
+                        ExternalAdapterConfig::Unix { path } => {
+                            inferqos_provider_protocol::AdapterEndpoint::Unix { path: path.clone() }
+                        }
+                        ExternalAdapterConfig::Loopback { uri } => {
+                            inferqos_provider_protocol::AdapterEndpoint::Loopback {
+                                uri: uri.clone(),
+                            }
+                        }
+                        ExternalAdapterConfig::Tls {
+                            uri,
+                            domain,
+                            ca_file,
+                            client_cert_file,
+                            client_key_file,
+                        } => inferqos_provider_protocol::AdapterEndpoint::Tls {
+                            uri: uri.clone(),
+                            domain: domain.clone(),
+                            ca_pem: ca_file.clone(),
+                            client_cert_pem: client_cert_file.clone(),
+                            client_key_pem: client_key_file.clone(),
+                        },
+                    };
+                    Arc::new(
+                        inferqos_provider_protocol::ExternalProviderClient::connect(endpoint)
+                            .await?,
+                    )
+                } else {
+                    Arc::new(HttpProvider::from_config(pool).await?)
+                };
             let capacity = Arc::new(CapacityModel::new(
                 pool.capacity_units,
                 pool.initial_safety_factor,
@@ -139,6 +332,9 @@ impl AppState {
             metrics: Metrics::default(),
             coordinator,
             lease_ttl,
+            identity,
+            concurrency: Mutex::new(ConcurrencyState::default()),
+            otel: RuntimeMetrics::default(),
         }));
         state.start_dispatcher();
         Ok(state)
@@ -161,16 +357,40 @@ impl AppState {
                 let Some(pool) = state.0.pools.get(&req.pool) else {
                     continue;
                 };
+                let config = state.0.config.read().await.clone();
+                if !state.try_enter(&req.identity, &config) {
+                    if pending.queued_at.elapsed() >= pending.request.deadline {
+                        state.0.metrics.rejected.fetch_add(1, Ordering::Relaxed);
+                        continue;
+                    }
+                    let _ = state.0.scheduler.enqueue(
+                        pending.request.clone(),
+                        pending.body_bytes,
+                        pending.class_weight,
+                        pending.tenant_weight,
+                        pending.app_weight,
+                    );
+                    state.0.pending.lock().insert(req.id, pending);
+                    continue;
+                }
                 let charged = pool.capacity.charged_units(req.estimate.normalized_units);
                 let reservation = state
-                    .0
-                    .coordinator
-                    .reserve(&req.pool, pool.limit, charged, state.0.lease_ttl)
+                    .reserve_distributed(&req, &config, pool.limit, charged)
                     .await;
-                if let Ok(Some(lease)) = reservation {
-                    pool.capacity.track_distributed(lease.id, charged);
-                    let _ = pending.sender.send(lease);
+                if let Ok(Some(leases)) = reservation {
+                    pool.capacity.track_distributed(leases.capacity.id, charged);
+                    if let Err(leases) = pending.sender.send(leases) {
+                        state.release_distributed(&leases).await;
+                        pool.capacity.release(
+                            leases.capacity.id,
+                            req.estimate.normalized_units,
+                            None,
+                            false,
+                        );
+                        state.leave(&req.identity);
+                    }
                 } else {
+                    state.leave(&req.identity);
                     let elapsed = pending.queued_at.elapsed();
                     if elapsed >= pending.request.deadline {
                         state.0.metrics.rejected.fetch_add(1, Ordering::Relaxed);
@@ -211,8 +431,214 @@ impl AppState {
     pub fn begin_drain(&self) {
         self.0.draining.store(true, Ordering::SeqCst)
     }
+    /// Poll a local configuration file and atomically apply safe policy changes after validation.
+    /// Listener, coordinator, pool, and OIDC trust-root changes require a restart.
+    pub fn start_config_reload(&self, path: PathBuf, interval: Duration) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            let mut last = tokio::fs::read(&path).await.ok();
+            let mut tick = tokio::time::interval(interval.max(Duration::from_millis(250)));
+            loop {
+                tick.tick().await;
+                if state.0.draining.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Ok(raw) = tokio::fs::read(&path).await else {
+                    continue;
+                };
+                if last.as_deref() == Some(raw.as_slice()) {
+                    continue;
+                }
+                let result = match Config::from_path(&path) {
+                    Ok(new) => {
+                        let current = state.0.config.read().await.clone();
+                        ensure_reload_compatible(&current, &new)
+                            .map_err(inferqos_config::ConfigError::Semantic)
+                            .and_then(|()| {
+                                state
+                                    .0
+                                    .identity
+                                    .replace_config(new.clone())
+                                    .map_err(|error| {
+                                        inferqos_config::ConfigError::Semantic(error.to_string())
+                                    })
+                            })
+                            .map(|()| new)
+                    }
+                    Err(error) => Err(error),
+                };
+                match result {
+                    Ok(new) => {
+                        *state.0.config.write().await = new;
+                        last = Some(raw);
+                        tracing::info!(path=%path.display(), "validated configuration reloaded");
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, path=%path.display(), "configuration reload rejected; retaining known-good configuration")
+                    }
+                }
+            }
+        });
+    }
     pub fn active(&self) -> u64 {
         self.0.metrics.active.load(Ordering::Relaxed)
+    }
+    fn try_enter(&self, identity: &IdentityContext, config: &Config) -> bool {
+        let tenant_limit = config
+            .policies
+            .tenants
+            .get(&identity.tenant)
+            .map_or(1, |policy| policy.max_concurrency);
+        let application_limit = config
+            .policies
+            .applications
+            .get(&identity.application)
+            .map_or(1, |policy| policy.max_concurrency);
+        let mut active = self.0.concurrency.lock();
+        if active.tenants.get(&identity.tenant).copied().unwrap_or(0) >= tenant_limit
+            || active
+                .applications
+                .get(&identity.application)
+                .copied()
+                .unwrap_or(0)
+                >= application_limit
+        {
+            return false;
+        }
+        *active.tenants.entry(identity.tenant.clone()).or_default() += 1;
+        *active
+            .applications
+            .entry(identity.application.clone())
+            .or_default() += 1;
+        true
+    }
+    fn force_enter(&self, identity: &IdentityContext) {
+        let mut active = self.0.concurrency.lock();
+        *active.tenants.entry(identity.tenant.clone()).or_default() += 1;
+        *active
+            .applications
+            .entry(identity.application.clone())
+            .or_default() += 1;
+    }
+    fn leave(&self, identity: &IdentityContext) {
+        let mut active = self.0.concurrency.lock();
+        decrement(&mut active.tenants, &identity.tenant);
+        decrement(&mut active.applications, &identity.application);
+    }
+    fn tenant_capacity_limit(&self, config: &Config, tenant: &str, pool_limit: f64) -> f64 {
+        let policy = config.policies.tenants.get(tenant);
+        let own_guarantee = policy.map_or(0.0, |value| value.guaranteed_share);
+        let configured_max = policy.map_or(1.0, |value| value.max_share);
+        let pending = self.0.pending.lock();
+        let competing: std::collections::HashSet<&str> = pending
+            .values()
+            .map(|value| value.request.identity.tenant.as_str())
+            .filter(|value| *value != tenant)
+            .collect();
+        if competing.is_empty() {
+            return pool_limit * configured_max;
+        }
+        let competing_guarantees: f64 = competing
+            .into_iter()
+            .map(|name| {
+                config
+                    .policies
+                    .tenants
+                    .get(name)
+                    .map_or(0.0, |value| value.guaranteed_share)
+            })
+            .sum();
+        let reclaimable_share = (1.0 - competing_guarantees.min(1.0)).max(own_guarantee);
+        pool_limit * configured_max.min(reclaimable_share)
+    }
+    async fn reserve_distributed(
+        &self,
+        request: &AdmissionRequest,
+        config: &Config,
+        pool_limit: f64,
+        charged: f64,
+    ) -> Result<Option<AdmissionLeases>, inferqos_coordinator::CoordinatorError> {
+        let tenant_concurrency = config
+            .policies
+            .tenants
+            .get(&request.identity.tenant)
+            .map_or(1, |policy| policy.max_concurrency) as f64;
+        let application_concurrency = config
+            .policies
+            .applications
+            .get(&request.identity.application)
+            .map_or(1, |policy| policy.max_concurrency)
+            as f64;
+        let tenant_key = format!(
+            "__concurrency__:{}:tenant:{}",
+            request.pool, request.identity.tenant
+        );
+        let application_key = format!(
+            "__concurrency__:{}:application:{}",
+            request.pool, request.identity.application
+        );
+        let Some(tenant_slot) = self
+            .0
+            .coordinator
+            .reserve(&tenant_key, tenant_concurrency, 1.0, self.0.lease_ttl)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let application_slot = match self
+            .0
+            .coordinator
+            .reserve(
+                &application_key,
+                application_concurrency,
+                1.0,
+                self.0.lease_ttl,
+            )
+            .await?
+        {
+            Some(lease) => lease,
+            None => {
+                self.0.coordinator.release(&tenant_slot).await?;
+                return Ok(None);
+            }
+        };
+        let tenant_limit = self.tenant_capacity_limit(config, &request.identity.tenant, pool_limit);
+        let capacity = match self
+            .0
+            .coordinator
+            .reserve_scoped(
+                &request.pool,
+                &request.identity.tenant,
+                pool_limit,
+                tenant_limit,
+                charged,
+                self.0.lease_ttl,
+            )
+            .await?
+        {
+            Some(lease) => lease,
+            None => {
+                self.0.coordinator.release(&application_slot).await?;
+                self.0.coordinator.release(&tenant_slot).await?;
+                return Ok(None);
+            }
+        };
+        Ok(Some(AdmissionLeases {
+            capacity,
+            tenant_slot,
+            application_slot,
+        }))
+    }
+    async fn release_distributed(&self, leases: &AdmissionLeases) {
+        for lease in [
+            &leases.capacity,
+            &leases.application_slot,
+            &leases.tenant_slot,
+        ] {
+            if let Err(error) = self.0.coordinator.release(lease).await {
+                tracing::error!(%error, lease_id=%lease.id, "failed to release distributed lease; expiry will recover it");
+            }
+        }
     }
     fn record(&self, r: DecisionRecord, max: usize) {
         if max == 0 {
@@ -226,7 +652,43 @@ impl AppState {
     }
 }
 
+fn decrement(values: &mut HashMap<String, usize>, key: &str) {
+    if let Some(value) = values.get_mut(key) {
+        *value = value.saturating_sub(1);
+        if *value == 0 {
+            values.remove(key);
+        }
+    }
+}
+
+fn ensure_reload_compatible(current: &Config, new: &Config) -> Result<(), String> {
+    let current = serde_json::to_value((
+        &current.server.listen,
+        &current.server.tls,
+        &current.admin.listen,
+        &current.coordinator,
+        &current.pools,
+        &current.identity.oidc,
+    ))
+    .map_err(|error| error.to_string())?;
+    let new = serde_json::to_value((
+        &new.server.listen,
+        &new.server.tls,
+        &new.admin.listen,
+        &new.coordinator,
+        &new.pools,
+        &new.identity.oidc,
+    ))
+    .map_err(|error| error.to_string())?;
+    let unchanged = current == new;
+    if !unchanged {
+        return Err("listener, coordinator, capacity pool, and OIDC issuer changes require a rolling restart".into());
+    }
+    Ok(())
+}
+
 async fn proxy_handler(State(state): State<AppState>, request: Request) -> Response {
+    let decision_started = Instant::now();
     if state.0.draining.load(Ordering::Relaxed) {
         return problem(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -237,6 +699,14 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
     }
     state.0.metrics.requests.fetch_add(1, Ordering::Relaxed);
     let config = state.0.config.read().await.clone();
+    let peer = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|value| value.0);
+    let mtls_fingerprints = request
+        .extensions()
+        .get::<VerifiedClientCertificate>()
+        .map_or_else(Vec::new, |value| value.sha256_fingerprints.clone());
     let (max_body, method, uri, headers) = (
         config.server.max_body_bytes,
         request.method().clone(),
@@ -259,7 +729,22 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
         .and_then(|v| v.to_str().ok())
         .and_then(|v| Uuid::parse_str(v).ok())
         .unwrap_or_else(Uuid::new_v4);
-    let identity = resolve_identity(&config, &headers);
+    let identity = match state
+        .0
+        .identity
+        .resolve(&headers, peer.map(|value| value.ip()), &mtls_fingerprints)
+        .await
+    {
+        Ok(identity) => identity,
+        Err(error) => {
+            return problem(
+                StatusCode::UNAUTHORIZED,
+                "authentication_failed",
+                &error.to_string(),
+                None,
+            );
+        }
+    };
     let requested = headers
         .get(HEADER_CLASS)
         .and_then(|v| v.to_str().ok())
@@ -278,19 +763,40 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
             Some(1),
         );
     };
-    let proxy_request = ProxyRequest {
-        method,
-        uri,
+    let estimation_request = ProxyRequest {
+        method: method.clone(),
+        uri: uri.clone(),
         headers: headers.clone(),
         body: body.clone(),
     };
-    let estimate = match pool.provider.estimate(&proxy_request).await {
+    let estimate = match pool.provider.estimate(&estimation_request).await {
         Ok(e) => e,
         Err(e) => {
             return problem(
                 StatusCode::BAD_REQUEST,
                 "estimate_failed",
                 &e.to_string(),
+                None,
+            );
+        }
+    };
+    state
+        .0
+        .otel
+        .request(&effective.to_string(), estimate.normalized_units.0);
+    let stored_body = match StoredBody::store(
+        body,
+        config.server.spool_threshold_bytes,
+        &config.server.spool_directory,
+    )
+    .await
+    {
+        Ok(body) => body,
+        Err(error) => {
+            return problem(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "spool_failed",
+                &format!("cannot securely spool bounded request body: {error}"),
                 None,
             );
         }
@@ -320,24 +826,35 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
         queueable,
     };
     let charged = pool.capacity.charged_units(estimate.normalized_units);
-    let immediate = match state
-        .0
-        .coordinator
-        .reserve(&pool_name, pool.limit, charged, state.0.lease_ttl)
-        .await
-    {
-        Ok(lease) => lease,
-        Err(error) => {
-            return problem(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "coordinator_unavailable",
-                &format!("capacity coordinator failed closed: {error}"),
-                Some(1),
-            );
+    let mut concurrency_entered = state.try_enter(&identity, &config);
+    let immediate = if concurrency_entered {
+        match state
+            .reserve_distributed(&admission, &config, pool.limit, charged)
+            .await
+        {
+            Ok(leases) => {
+                if leases.is_none() {
+                    state.leave(&identity);
+                    concurrency_entered = false;
+                }
+                leases
+            }
+            Err(error) => {
+                state.leave(&identity);
+                state.0.otel.coordinator_failure();
+                return problem(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "coordinator_unavailable",
+                    &format!("capacity coordinator failed closed: {error}"),
+                    Some(1),
+                );
+            }
         }
+    } else {
+        None
     };
-    if let Some(lease) = &immediate {
-        pool.capacity.track_distributed(lease.id, charged);
+    if let Some(leases) = &immediate {
+        pool.capacity.track_distributed(leases.capacity.id, charged);
     }
     let (mut reservation, mut outcome, mut queue_age) = (immediate, "admitted", 0u64);
     if reservation.is_none() {
@@ -348,6 +865,8 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
                 .shadow_would_queue
                 .fetch_add(1, Ordering::Relaxed);
             outcome = "shadow_would_queue";
+            state.force_enter(&identity);
+            concurrency_entered = true;
         } else if !queueable {
             return reject_and_record(
                 &state,
@@ -365,7 +884,7 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
             let app_weight = app_policy.map_or(1, |a| a.weight);
             if let Err(e) = state.0.scheduler.enqueue(
                 admission.clone(),
-                body.len(),
+                stored_body.len(),
                 default_class.weight,
                 tenant_weight,
                 app_weight,
@@ -378,7 +897,7 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
                 Pending {
                     sender: tx,
                     request: admission.clone(),
-                    body_bytes: body.len(),
+                    body_bytes: stored_body.len(),
                     class_weight: default_class.weight,
                     tenant_weight,
                     app_weight,
@@ -389,6 +908,7 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
             match tokio::time::timeout(deadline, rx).await {
                 Ok(Ok(id)) => {
                     reservation = Some(id);
+                    concurrency_entered = true;
                     outcome = "queued_then_admitted";
                     queue_age = wait_start.elapsed().as_millis() as u64
                 }
@@ -405,14 +925,35 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
             }
         }
     }
+    state.0.otel.admission(
+        decision_started.elapsed().as_secs_f64(),
+        &effective.to_string(),
+    );
+    if queue_age > 0 {
+        state
+            .0
+            .otel
+            .queue(queue_age as f64 / 1000.0, &effective.to_string());
+    }
     state.0.metrics.admitted.fetch_add(1, Ordering::Relaxed);
     state.0.metrics.active.fetch_add(1, Ordering::Relaxed);
+    state.0.otel.active(1, &effective.to_string());
+    let admission_guard = ActiveAdmissionGuard {
+        state: state.clone(),
+        capacity: pool.capacity.clone(),
+        leases: reservation.take(),
+        identity: identity.clone(),
+        estimate: estimate.clone(),
+        effective_class: effective.to_string(),
+        concurrency_entered,
+        counted_active: true,
+    };
     state.record(
         DecisionRecord {
             request_id,
             effective_class: effective.to_string(),
-            tenant: identity.tenant,
-            application: identity.application,
+            tenant: identity.tenant.clone(),
+            application: identity.application.clone(),
             pool: pool_name.clone(),
             estimated_work_units: estimate.normalized_units.0,
             outcome: outcome.into(),
@@ -420,18 +961,27 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
         },
         config.limits.decision_history,
     );
+    let dispatch_body = match stored_body.load().await {
+        Ok(body) => body,
+        Err(error) => {
+            return problem(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "spool_read_failed",
+                &format!("queued request body could not be read safely: {error}"),
+                None,
+            );
+        }
+    };
+    let proxy_request = ProxyRequest {
+        method,
+        uri,
+        headers,
+        body: dispatch_body,
+    };
     let result = pool.provider.dispatch(proxy_request).await;
     let response = match result {
         Ok(r) => r,
         Err(e) => {
-            if let Some(lease) = reservation {
-                if let Err(error) = state.0.coordinator.release(&lease).await {
-                    tracing::error!(%error, lease_id=%lease.id, "failed to release capacity lease; expiry will recover it");
-                }
-                pool.capacity
-                    .release(lease.id, estimate.normalized_units, None, false);
-            }
-            state.0.metrics.active.fetch_sub(1, Ordering::Relaxed);
             return problem(
                 StatusCode::BAD_GATEWAY,
                 "upstream_error",
@@ -447,37 +997,36 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
             .metrics
             .provider_throttles
             .fetch_add(1, Ordering::Relaxed);
+        state.0.otel.throttle(pool.provider.name());
     }
     let status_code = response.status;
     let mut response_headers = response.headers;
     let mut upstream_rx = response.body;
-    let (capacity_model, metrics) = (pool.capacity.clone(), state.clone());
+    let usage = response.usage;
     let (output_tx, output_rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, CoreError>>(16);
     tokio::spawn(async move {
-        let mut renew =
-            tokio::time::interval((metrics.0.lease_ttl / 3).max(Duration::from_secs(1)));
+        let mut renew = tokio::time::interval(
+            (admission_guard.state.0.lease_ttl / 3).max(Duration::from_secs(1)),
+        );
         loop {
             tokio::select! {
                 chunk = upstream_rx.recv() => match chunk {
                     Some(chunk) => if output_tx.send(chunk).await.is_err() { break; },
                     None => break,
                 },
-                _ = renew.tick(), if reservation.is_some() => {
-                    if let Some(lease) = &reservation
-                        && let Err(error) = metrics.0.coordinator.renew(lease, metrics.0.lease_ttl).await
-                    {
-                        tracing::error!(%error, lease_id=%lease.id, "failed to renew active capacity lease");
+                _ = renew.tick(), if admission_guard.leases.is_some() => {
+                    if let Some(leases) = &admission_guard.leases {
+                        for lease in [&leases.capacity, &leases.tenant_slot, &leases.application_slot] {
+                            if let Err(error) = admission_guard.state.0.coordinator.renew(lease, admission_guard.state.0.lease_ttl).await {
+                                tracing::error!(%error, lease_id=%lease.id, "failed to renew active distributed lease");
+                            }
+                        }
                     }
                 }
             }
         }
-        if let Some(lease) = reservation {
-            if let Err(error) = metrics.0.coordinator.release(&lease).await {
-                tracing::error!(%error, lease_id=%lease.id, "failed to release capacity lease; expiry will recover it");
-            }
-            capacity_model.release(lease.id, estimate.normalized_units, None, throttled);
-        }
-        metrics.0.metrics.active.fetch_sub(1, Ordering::Relaxed);
+        let actual = usage.borrow().clone();
+        admission_guard.complete(actual, throttled).await;
     });
     let body_stream = stream::unfold(output_rx, |mut rx| async move {
         rx.recv()
@@ -500,32 +1049,6 @@ async fn proxy_handler(State(state): State<AppState>, request: Request) -> Respo
     out
 }
 
-fn resolve_identity(config: &Config, headers: &HeaderMap) -> IdentityContext {
-    let supplied = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    if let Some(key) = supplied {
-        for (env, mapping) in &config.policies.api_keys {
-            if let Ok(expected) = std::env::var(env)
-                && expected.as_bytes().ct_eq(key.as_bytes()).into()
-            {
-                return IdentityContext {
-                    principal: mapping.principal.clone(),
-                    tenant: mapping.tenant.clone(),
-                    application: mapping.application.clone(),
-                    trusted: true,
-                };
-            }
-        }
-    }
-    IdentityContext {
-        principal: "anonymous".into(),
-        tenant: "default".into(),
-        application: "default".into(),
-        trusted: false,
-    }
-}
 fn effective_class<'a>(
     config: &'a Config,
     identity: &IdentityContext,
@@ -666,16 +1189,33 @@ async fn decisions(State(s): State<AppState>) -> impl IntoResponse {
     axum::Json(s.0.decisions.lock().iter().cloned().collect::<Vec<_>>())
 }
 async fn metrics(State(s): State<AppState>) -> String {
-    format!(
-        "# TYPE inferqos_requests_total counter\ninferqos_requests_total {}\n# TYPE inferqos_admitted_total counter\ninferqos_admitted_total {}\n# TYPE inferqos_queued_total counter\ninferqos_queued_total {}\n# TYPE inferqos_rejected_total counter\ninferqos_rejected_total {}\n# TYPE inferqos_provider_throttles_total counter\ninferqos_provider_throttles_total {}\n# TYPE inferqos_active_requests gauge\ninferqos_active_requests {}\n# TYPE inferqos_queue_depth gauge\ninferqos_queue_depth {}\n",
+    let mut output = format!(
+        "# TYPE inferqos_requests_total counter\ninferqos_requests_total {}\n# TYPE inferqos_admitted_total counter\ninferqos_admitted_total {}\n# TYPE inferqos_queued_total counter\ninferqos_queued_total {}\n# TYPE inferqos_rejected_total counter\ninferqos_rejected_total {}\n# TYPE inferqos_shadow_would_queue_total counter\ninferqos_shadow_would_queue_total {}\n# TYPE inferqos_provider_throttles_total counter\ninferqos_provider_throttles_total {}\n# TYPE inferqos_active_requests gauge\ninferqos_active_requests {}\n# TYPE inferqos_queue_depth gauge\ninferqos_queue_depth {}\n",
         s.0.metrics.requests.load(Ordering::Relaxed),
         s.0.metrics.admitted.load(Ordering::Relaxed),
         s.0.metrics.queued.load(Ordering::Relaxed),
         s.0.metrics.rejected.load(Ordering::Relaxed),
+        s.0.metrics.shadow_would_queue.load(Ordering::Relaxed),
         s.0.metrics.provider_throttles.load(Ordering::Relaxed),
         s.0.metrics.active.load(Ordering::Relaxed),
         s.0.scheduler.snapshot().depth
-    )
+    );
+    output.push_str("# TYPE inferqos_capacity_configured_units gauge\n# TYPE inferqos_capacity_reserved_units gauge\n# TYPE inferqos_capacity_safety_factor gauge\n# TYPE inferqos_capacity_confidence gauge\n");
+    for (name, pool) in &s.0.pools {
+        let name = prometheus_escape(name);
+        let status = pool.capacity.status();
+        output.push_str(&format!(
+            "inferqos_capacity_configured_units{{pool=\"{name}\"}} {}\ninferqos_capacity_reserved_units{{pool=\"{name}\"}} {}\ninferqos_capacity_safety_factor{{pool=\"{name}\"}} {}\ninferqos_capacity_confidence{{pool=\"{name}\"}} {}\n",
+            status.configured_units, status.reserved_units, status.safety_factor, status.confidence,
+        ));
+    }
+    output
+}
+fn prometheus_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 async fn dashboard() -> Html<&'static str> {
     Html(DASHBOARD)

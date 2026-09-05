@@ -1,18 +1,21 @@
 [package]
-name = "inferqos-config"
+name = "inferqos-identity"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-anyhow.workspace = true
-humantime-serde.workspace = true
+http.workspace = true
+inferqos-config.workspace = true
 inferqos-core.workspace = true
 ipnet.workspace = true
-schemars.workspace = true
+jsonwebtoken.workspace = true
+parking_lot.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 url.workspace = true
