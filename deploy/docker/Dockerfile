@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.98.1-bookworm AS build
+FROM rust:1.98-bookworm AS build
 WORKDIR /src
 COPY . .
 RUN cargo build --locked --release --bin inferqos

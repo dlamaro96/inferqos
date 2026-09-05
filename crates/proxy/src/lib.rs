@@ -604,19 +604,47 @@ async fn live() -> impl IntoResponse {
 }
 async fn ready(State(s): State<AppState>) -> Response {
     if s.0.draining.load(Ordering::Relaxed) {
-        problem(
+        return problem(
             StatusCode::SERVICE_UNAVAILABLE,
             "draining",
             "instance is draining",
             None,
-        )
-    } else {
-        (
-            StatusCode::OK,
-            axum::Json(serde_json::json!({"status":"ready","pools":s.0.pools.len()})),
-        )
-            .into_response()
+        );
     }
+
+    if s.0.coordinator.healthy().await.is_err() {
+        return problem(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "coordinator_unavailable",
+            "the configured capacity coordinator is unavailable",
+            Some(1),
+        );
+    }
+
+    let mut usable_pools = 0usize;
+    for pool in s.0.pools.values() {
+        if matches!(pool.provider.health().await, Ok(health) if health.healthy) {
+            usable_pools += 1;
+        }
+    }
+    if usable_pools == 0 {
+        return problem(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "no_usable_pool",
+            "no configured inference capacity pool is currently usable",
+            Some(1),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "status":"ready",
+            "pools":s.0.pools.len(),
+            "usable_pools":usable_pools
+        })),
+    )
+        .into_response()
 }
 async fn status(State(s): State<AppState>) -> impl IntoResponse {
     axum::Json(
