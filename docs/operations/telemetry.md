@@ -1,3 +1,7 @@
+---
+title: "Telemetry operations"
+---
+
 # Telemetry operations
 
 Logs are structured JSON. Set `RUST_LOG` for filtering. Prometheus metrics remain available at the

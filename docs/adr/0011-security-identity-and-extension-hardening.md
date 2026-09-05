@@ -1,3 +1,7 @@
+---
+title: "ADR 0011: Security, identity, and extension hardening"
+---
+
 # ADR 0011: Security, identity, and extension hardening
 
 - Status: Accepted

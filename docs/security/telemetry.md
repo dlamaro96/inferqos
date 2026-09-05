@@ -1,3 +1,7 @@
+---
+title: "Telemetry and privacy"
+---
+
 # Telemetry and privacy
 
 Default policy:

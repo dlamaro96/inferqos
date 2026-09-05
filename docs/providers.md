@@ -1,3 +1,7 @@
+---
+title: "Provider notes"
+---
+
 # Provider notes
 
 - Azure OpenAI: configure the provisioned deployment endpoint. With `auth: { type: ambient }`,

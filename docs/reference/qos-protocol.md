@@ -1,3 +1,7 @@
+---
+title: "QoS request protocol"
+---
+
 # QoS request protocol
 
 Maturity: **experimental vendor extension**, version 0.1. These headers are not an industry standard.
@@ -14,4 +18,3 @@ Maturity: **experimental vendor extension**, version 0.1. These headers are not 
 Client input is a request, never an entitlement. The effective class derives from authenticated
 principal, tenant, application, and configured policy. A request can be downgraded or rejected.
 Provider calls cannot be promised exactly once across arbitrary upstream APIs.
-
