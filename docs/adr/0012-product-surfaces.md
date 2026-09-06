@@ -25,10 +25,13 @@ operators need live data, while evaluators need a reproducible model with explic
 - The embedded operations dashboard remains dependency-free assets compiled into the Rust binary.
   It reads only versioned management APIs, has no external resources, and inherits management-plane
   authentication and CSP controls.
-- The public website is a separate static, unprivileged OCI workload. It never proxies inference,
-  never reads operational APIs, and contains no analytics. Its source and deployment lifecycle live
+- The public website and canonical reader-facing documentation are a separate static, unprivileged
+  OCI workload. It never reads customer operational APIs and contains no analytics. Its source and deployment lifecycle live
   in a separate private repository so the OSS product tree remains focused on the distributable
   control plane, embedded operational UI, documentation, and integration contracts.
+- Documentation source remains alongside the code in this public repository for review, release
+  versioning, and offline use. The product website renders the canonical navigation and reading
+  experience; repository Markdown and GitHub Pages are source/fallback surfaces, not the primary URL.
 - `/demo/` is a deterministic browser-only educational simulation. It compares admission policies
   against the same generated metadata and clearly states that it is not a provider benchmark.
 - Historical analysis intended for real capacity decisions remains in `inferqos analyze` and

@@ -5,11 +5,11 @@
 [![License](https://img.shields.io/github/license/dlamaro96/inferqos)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/dlamaro96/inferqos/badge)](https://securityscorecards.dev/viewer/?uri=github.com/dlamaro96/inferqos)
 [![Container](https://img.shields.io/badge/GHCR-multi--arch-2496ed)](https://github.com/dlamaro96/inferqos/pkgs/container/inferqos)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-6e56cf)](https://dlamaro96.github.io/inferqos/)
+[![Docs](https://img.shields.io/badge/docs-inferqos-315fe8)](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/docs/)
 
 [Website](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/) ·
 [Live traffic lab](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/) ·
-[Documentation](https://dlamaro96.github.io/inferqos/) ·
+[Documentation](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/docs/) ·
 [Verified releases](https://github.com/dlamaro96/inferqos/releases)
 
 **The open-source QoS control plane for finite and contracted AI inference capacity.**
@@ -42,8 +42,10 @@ InferQoS answers **should this request consume scarce contracted capacity now?**
 ### Option A — browser, no installation
 
 Open the [live traffic lab](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/).
-Launch the burst and compare the same workload under uncontrolled admission and InferQoS. Change
-capacity, class mix, and scheduler policy while the timeline runs. It is a safe browser simulation:
+Launch the burst and compare the same workload under uncontrolled admission and InferQoS. Select
+Azure, AWS, Google Cloud, or a generic endpoint; then edit the purchased capacity, token mix,
+cache rate, request rate, and latency. The translator shows weighted TPM, requests/minute, active
+generations, and engaged-user estimates before applying the same workload to the scheduler. It is a safe browser simulation:
 it uses no provider credentials and sends no prompt content.
 
 [![InferQoS traffic lab](docs/assets/screenshots/traffic-lab.jpg)](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/)
@@ -116,7 +118,7 @@ production approval.
 | systemd | Linux host, root for install only | 1 process | **$0 incremental** on an existing host |
 
 Full assumptions, current official price sources, HA costs, network requirements, and a sizing
-worksheet are in [deployment requirements and cost](docs/deployment/requirements-and-cost.md).
+worksheet are in the [deployment guide](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/docs/deployment/).
 
 ```bash
 # Inspect everything first; this performs no deployment.
