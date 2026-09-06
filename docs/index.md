@@ -10,12 +10,18 @@ description: Deploy, operate, and extend the InferQoS control plane.
   <nav><a href="https://github.com/dlamaro96/inferqos#see-it-work-now">Run the five-minute demo</a><a href="https://web.inferqos-website.daniamaro96.apps.pluglayer.io/demo/">Open the traffic lab</a></nav>
 </section>
 
+> **Canonical documentation:** the maintained reader experience now lives at
+> [web.inferqos-website.daniamaro96.apps.pluglayer.io/docs/](https://web.inferqos-website.daniamaro96.apps.pluglayer.io/docs/).
+> These Markdown files remain in the open-source repository so technical changes, examples, and
+> security guidance can be reviewed and versioned with the code.
+
 <div class="docs-note"><i></i><p>No paid provider key is required for the local demo. The default configuration logs no prompts or completions and sends no project analytics.</p></div>
 
 ## Choose a path
 
 <div class="doc-grid">
   <a class="doc-card" href="architecture/overview.html"><small>UNDERSTAND</small><h2>Architecture</h2><p>Request path, trust boundaries, high availability, and the provider-neutral capacity model.</p></a>
+  <a class="doc-card" href="concepts/capacity.html"><small>TRANSLATE</small><h2>Capacity</h2><p>Turn PTUs, token or Model Unit contracts, GSUs, and measured throughput into explainable workload.</p></a>
   <a class="doc-card" href="concepts/scheduling.html"><small>REASON</small><h2>Scheduling</h2><p>Hierarchical fairness, work estimates, deadlines, aging, and non-preemption.</p></a>
   <a class="doc-card" href="deployment/"><small>SHIP</small><h2>Deployment</h2><p>One binary from Docker to Kubernetes, ACA, ECS, Cloud Run, and systemd.</p></a>
   <a class="doc-card" href="operations/runbook.html"><small>OPERATE</small><h2>Runbook</h2><p>Capacity pressure, coordinator failures, SLOs, alerts, and graceful degradation.</p></a>
@@ -49,4 +55,3 @@ The demo starts the fake finite-capacity provider, InferQoS, the operational das
 - [Export OTLP signals and Prometheus metrics](operations/telemetry.html)
 - [Run shadow mode before enforcing policy](concepts/scheduling.html)
 - [Build a provider adapter](reference/provider-sdk.html)
----\n+title: \"Index\"\n+---\n+\n ---
