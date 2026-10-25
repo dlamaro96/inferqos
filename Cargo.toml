@@ -59,7 +59,7 @@ http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["tokio"] }
 humantime-serde = "1.1"
 ipnet = "2.12"
-jsonwebtoken = { version = "10.2", default-features = false, features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "11.0", default-features = false, features = ["aws_lc_rs"] }
 google-cloud-auth = { version = "1.16", default-features = false, features = ["default-rustls-provider"] }
 parking_lot = "0.12"
 opentelemetry = { version = "0.32", features = ["metrics", "trace"] }
